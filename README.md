@@ -1,137 +1,34 @@
-# FacultyFlow Appointment Scheduler
+# Remindly – appointment reminders
 
-FacultyFlow is a teacher-focused appointment scheduling system for a university Computer Science department. It is designed as a stronger fourth-year Computer Science project: the frontend is a responsive React/Vite application, the backend is a Google Apps Script Web App, and Google Sheets is the database.
+Sign up, add an appointment, and get an **email confirmation** right away plus a **reminder email** before it starts.
+No roles: everyone has their own private list. React + Vite front end, Google Apps Script + Google Sheets back end.
 
-The system has three roles:
-
-- **Administrator:** manages users, teachers, advising types, and all appointments.
-- **Teacher:** sees and manages appointments assigned to their linked teacher profile.
-- **Student:** signs in, books appointments with teachers, and sees their own appointments.
-
-Passwords are never stored in plain text. Apps Script stores salted SHA-256 password hashes, and the API issues expiring session tokens stored in the `Sessions` sheet.
-
-## Project structure
-
-```text
-appointments/
-├── api/apps-script.js       # Vercel serverless proxy to Apps Script
-├── appsscript/Code.gs       # Google Apps Script API, auth, roles, and Sheets CRUD
-├── public/manus-routes.json # Route manifest used by preview tooling
-├── src/App.jsx              # Role-based FacultyFlow interface
-├── src/api.js               # Session-aware API client and local demo data
-├── src/styles.css           # Responsive visual system and auth screens
-├── index.html
-├── package.json
-└── README.md
+```
+api/apps-script.js    Vercel proxy to Apps Script (keeps your API key private)
+appsscript/Code.gs    Backend: accounts, appointments, email reminders
+src/App.jsx           The whole interface
+src/api.js            API client
+src/styles.css        Styles + animations
 ```
 
-## Google Sheets schema
+## Set up (10 minutes)
 
-Run `setup()` once. The script creates these tabs:
+1. **Sheet + script** – create a Google Sheet → *Extensions → Apps Script* → paste `appsscript/Code.gs`.
+2. **Run `setup()`** once and approve the permissions (Sheets, send email, triggers). This creates the tabs and starts a timer that checks for due reminders every 5 minutes.
+3. **Test email** – run `sendTestEmail()`; you should get an email.
+4. **Deploy** – *Deploy → New deployment → Web app* → Execute as **Me**, access **Anyone** → copy the Web app URL.
+5. **Vercel** – add env var `APPS_SCRIPT_URL` (the URL above). Optional: set an `API_KEY` Script Property in Apps Script and the same value as `APPS_SCRIPT_API_KEY` in Vercel.
 
-- `Appointments`: appointment records. The existing database names `customerName` and `staffId` are used internally; the interface presents them as **student** and **teacher**.
-- `Services`: advising types such as thesis advising, capstone consultation, and code review clinic.
-- `Staff`: teacher profiles.
-- `Users`: login accounts, roles, password hashes, departments, and teacher-profile links.
-- `Sessions`: expiring login tokens.
+After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → New version*.
 
-## 1. Connect Apps Script to Google Sheets
+### Good to know
+- **Email limits:** a free Gmail account can send ~100 emails/day via Apps Script (Google Workspace ~1,500). Emails come from the Google account that owns the script.
+- **Time zones:** each appointment remembers the time zone of the browser that booked it, so reminders fire at the right moment.
+- **Reminder accuracy:** reminders go out within ~5 minutes of the chosen time.
+- **Turn off public sign-up:** add Script Property `ALLOW_SIGNUP` = `false`.
+- **Coming from the old FacultyFlow sheet?** Use a new Google Sheet (the columns changed). Old `Services`, `Staff` and `PasswordResetRequests` tabs aren't used any more.
 
-1. Create or open the Google Sheet that will be your database.
-2. Open **Extensions → Apps Script** from that Sheet. This creates a bound Apps Script project, which is the easiest setup.
-3. Replace the starter code with the complete contents of [`appsscript/Code.gs`](./appsscript/Code.gs).
-4. Save and run the `setup()` function once. Approve the requested permissions.
-
-If you created a standalone Apps Script project at `script.google.com`, open **Project Settings → Script properties** and add:
-
-```text
-SPREADSHEET_ID = your_google_sheet_id
+## Local development
 ```
-
-The Sheet ID is the long value between `/d/` and `/edit` in the Sheet URL. Save the property before running `setup()`.
-
-## 2. Create the first administrator
-
-After `setup()` finishes, create an administrator from the Apps Script editor. Run the function with your own values:
-
-```javascript
-function createMyFirstAdmin() {
-  return createAdminUser(
-    "admin@university.edu",
-    "ChangeThisPassword123!",
-    "System Administrator",
-    "Computer Science"
-  );
-}
+pnpm install && pnpm dev      # runs in demo mode (no emails) unless VITE_APPS_SCRIPT_URL is set
 ```
-
-Save that helper, select `createMyFirstAdmin`, run it once, and then remove the helper function from the script. The password must have at least eight characters. Use the generated administrator account to create teacher and student accounts in the **Users & roles** screen.
-
-For teacher accounts, select the matching teacher profile in **Teacher account link**. That link is how the API limits a teacher to their own appointments.
-
-### If login says “Invalid email or password”
-
-Confirm that you ran `setup()` using the latest `Code.gs`, created an administrator with `createAdminUser(...)`, and deployed a new Apps Script Web App version. The email must match the account exactly apart from letter capitalization, and the password must be the one used when the account was created. If the `Users` sheet is empty, the API now displays a specific message telling you to create the first administrator.
-
-### Forgot account or password
-
-The login screen includes **Forgot your password or account?**. The request is written to the `PasswordResetRequests` sheet without revealing whether an email exists. An administrator can review the request, open **Users & roles**, edit the matching account, and set a new password. This administrator-reviewed flow is safer than exposing a password-reset token through a Google Sheet.
-
-## 3. Deploy the Apps Script API
-
-1. In Apps Script, select **Deploy → New deployment**.
-2. Choose **Web app**.
-3. Set **Execute as** to **Me**.
-4. Set **Who has access** to **Anyone**.
-5. Deploy and copy the Web App URL ending in `/exec`.
-6. Optional but recommended: add a Script property named `API_KEY` with a long random value. The Vercel proxy will send it server-side, so it is not exposed in browser code.
-
-The API supports `login`, `me`, `getDashboard`, appointment CRUD, service CRUD, teacher CRUD, `listUsers`, `createUser`, and `updateUser`. Protected actions require a valid session token, and administrator actions also require the administrator role.
-
-After changing `Code.gs`, create a new Apps Script deployment version:
-
-**Deploy → Manage deployments → Edit → New version → Deploy**
-
-## 4. Run locally
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Without production configuration, the app runs with faculty-focused demo data and a local demo administrator session. To call Apps Script directly during local development, create `.env.local`:
-
-```text
-VITE_APPS_SCRIPT_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
-```
-
-For a real deployment, use the Vercel proxy instead of exposing the Apps Script URL in the browser.
-
-## 5. Deploy to GitHub and Vercel
-
-Push the project to GitHub and import the repository into Vercel. Add these Vercel Environment Variables:
-
-```text
-APPS_SCRIPT_URL=https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
-APPS_SCRIPT_API_KEY=the_same_value_as_your_optional_API_KEY
-```
-
-The production flow is:
-
-```text
-Student / Teacher / Admin browser
-        ↓
-Vercel React frontend
-        ↓
-/api/apps-script serverless proxy
-        ↓
-Google Apps Script Web App
-        ↓
-Google Sheets
-```
-
-Vercel does not store the application records. It hosts the interface and forwards authenticated requests to Apps Script.
-
-## Why this is suitable for a fourth-year project
-
-The project separates the presentation layer, API transport, business rules, authentication, authorization, and persistence layer. It demonstrates salted password hashing, expiring sessions, role-based authorization, teacher-profile linking, conflict detection for double booking, input validation, optimistic UI updates, and deployment configuration. Google Sheets remains appropriate for a small department or prototype; a later production version could migrate the same logical schema to PostgreSQL.
