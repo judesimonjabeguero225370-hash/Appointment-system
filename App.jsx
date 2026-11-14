@@ -27,6 +27,7 @@ function prettyDate(value, options = { month: "short", day: "numeric" }) {
 
 function prettyTime(value) {
   if (!value) return "—";
+  
   const [hours, minutes] = value.split(":").map(Number);
   const date = new Date();
   date.setHours(hours || 0, minutes || 0, 0, 0);
