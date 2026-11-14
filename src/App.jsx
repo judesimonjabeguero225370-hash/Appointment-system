@@ -115,8 +115,8 @@ function AuthScreen({ onAuth }) {
       <div className="auth-body" key={mode + step}>
         <h1>{title}</h1><p className="muted">{intro}</p>
         <form onSubmit={submit}>
-          {mode === "signup" && <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Elena Rodriguez" required autoFocus autoComplete="name" /></label>}
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" /></label>
+          {mode === "signup" && <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Juan Dela Cruz" required autoFocus autoComplete="name" /></label>}
+          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="JuanDelaCruz@example.com" required autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" /></label>
           {mode === "recovery" && step === 2 && <label>6-digit code<input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="123456" required autoFocus autoComplete="one-time-code" className="code-input" /></label>}
           {(mode !== "recovery" || step === 2) && <PasswordField label={mode === "recovery" ? "New password" : "Password"} value={password} onChange={setPassword} placeholder={mode === "signin" ? "Your password" : "At least 8 characters"} autoComplete={mode === "signin" ? "current-password" : "new-password"} />}
           {mode !== "recovery" && <label className="check"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span className="check-box" />Keep me signed in</label>}
