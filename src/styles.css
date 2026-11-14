@@ -125,3 +125,14 @@ h1 { margin: 0; color: #294640; font-size: 24px; letter-spacing: -.7px; line-hei
 input:disabled, select:disabled { background: #f0f4f0; color: #82928a; cursor: not-allowed; }
 @media (max-width: 900px) { .auth-shell { grid-template-columns: 1fr; padding: 35px 22px; }.auth-card { justify-self: center; }.auth-side { display: none; } }
 @media (max-width: 500px) { .auth-card { padding: 27px 21px; }.auth-card h1 { font-size: 26px; } }
+
+.password-input { display: flex; align-items: center; border: 1px solid #dce7df; border-radius: 9px; background: #fcfdfb; overflow: hidden; }
+.password-input:focus-within { border-color: #8cb8a0; box-shadow: 0 0 0 3px rgba(140,184,160,.13); }
+.password-input input { border: 0; box-shadow: none !important; background: transparent; }
+.password-input button { border: 0; background: transparent; color: #5f8877; padding: 9px 11px; font-size: 10px; font-weight: 900; }
+.password-input button:hover { color: #315c57; }
+.remember-label { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 8px !important; cursor: pointer; font-weight: 700 !important; }
+.remember-label input { position: absolute; opacity: 0; pointer-events: none; }
+.remember-check { width: 16px; height: 16px; border: 1px solid #cbdacf; border-radius: 5px; background: #fff; position: relative; }
+.remember-label input:checked + .remember-check { background: #6e9f84; border-color: #6e9f84; }
+.remember-label input:checked + .remember-check:after { content: "✓"; color: #fff; position: absolute; left: 3px; top: -1px; font-size: 12px; font-weight: 900; }

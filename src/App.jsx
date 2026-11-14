@@ -16,9 +16,25 @@ function prettyDate(value, options = { month: "short", day: "numeric" }) { if (!
 function prettyTime(value) { if (!value) return "—"; const [hours, minutes] = value.split(":").map(Number); const date = new Date(); date.setHours(hours || 0, minutes || 0, 0, 0); return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(date); }
 function titleCase(value) { return value.replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function emptyAppointmentForm(services = [], staff = [], user = null) { return { id: "", customerName: user?.role === "student" ? user.fullName : "", customerEmail: user?.role === "student" ? user.email : "", customerPhone: "", serviceId: services.find((item) => item.active)?.id || "", staffId: user?.role === "teacher" && user.teacherId ? user.teacherId : staff.find((item) => item.active)?.id || "", date: todayIso(), time: "09:00", status: "pending", notes: "" }; }
-function readSession() { try { return JSON.parse(localStorage.getItem("facultyflow-session") || "null"); } catch { return null; } }
-function saveSession(session) { localStorage.setItem("facultyflow-session", JSON.stringify(session)); }
-function clearSession() { localStorage.removeItem("facultyflow-session"); }
+function readSession() {
+  try {
+    return JSON.parse(localStorage.getItem("facultyflow-session") || sessionStorage.getItem("facultyflow-session") || "null");
+  } catch { return null; }
+}
+function saveSession(session, rememberDevice) {
+  const serialized = JSON.stringify(session);
+  if (rememberDevice) {
+    localStorage.setItem("facultyflow-session", serialized);
+    sessionStorage.removeItem("facultyflow-session");
+  } else {
+    sessionStorage.setItem("facultyflow-session", serialized);
+    localStorage.removeItem("facultyflow-session");
+  }
+}
+function clearSession() {
+  localStorage.removeItem("facultyflow-session");
+  sessionStorage.removeItem("facultyflow-session");
+}
 
 function StatusBadge({ status }) { return <span className={`status-badge status-${status}`}>{titleCase(status)}</span>; }
 function Modal({ title, eyebrow, children, onClose, wide = false }) { return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className={`modal ${wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}><div className="modal-heading"><div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close dialog">×</button></div>{children}</div></div>; }
@@ -29,7 +45,9 @@ function StatCard({ label, value, note, tone = "mint", icon }) { return <div cla
 function LoginScreen({ onLogin, loading, error }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  return <div className="auth-shell"><div className="auth-decoration auth-decoration-one" /><div className="auth-decoration auth-decoration-two" /><div className="auth-card"><div className="brand auth-brand"><span className="brand-mark">F</span><div><strong>facultyflow</strong><small>computer science advising</small></div></div><span className="eyebrow">Secure workspace</span><h1>Make time for the work that matters.</h1><p className="auth-intro">Sign in to book faculty appointments, guide students, or manage the department workspace.</p><form onSubmit={(event) => { event.preventDefault(); onLogin(email, password); }}><label>University email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu" required autoComplete="username" /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Your password" required autoComplete="current-password" /></label>{error && <div className="auth-error">{error}</div>}<button className="primary-button auth-submit" disabled={loading}>{loading ? "Signing in…" : "Sign in to FacultyFlow"}</button></form><p className="auth-footnote">Accounts and permissions are managed by your department administrator.</p></div><div className="auth-side"><span className="eyebrow">Faculty appointment system</span><h2>Advising is a conversation, not a queue.</h2><p>Built for final-year computer science departments: thesis guidance, capstone reviews, code clinics, and the people who make them possible.</p><div className="auth-points"><span>✓ Role-based access</span><span>✓ Google Sheets data layer</span><span>✓ Faculty-first scheduling</span></div></div></div>;
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
+  return <div className="auth-shell"><div className="auth-decoration auth-decoration-one" /><div className="auth-decoration auth-decoration-two" /><div className="auth-card"><div className="brand auth-brand"><span className="brand-mark">F</span><div><strong>facultyflow</strong><small>computer science advising</small></div></div><span className="eyebrow">Secure workspace</span><h1>Make time for the work that matters.</h1><p className="auth-intro">Use your university email. FacultyFlow will automatically open the right workspace for your role.</p><form onSubmit={(event) => { event.preventDefault(); onLogin(email, password, rememberDevice); }}><label>University email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu" required autoFocus autoComplete="username" /></label><label>Password<div className="password-input"><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Your password" required autoComplete="current-password" /><button type="button" onClick={() => setShowPassword((current) => !current)}>{showPassword ? "Hide" : "Show"}</button></div></label><label className="remember-label"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} /><span className="remember-check" />Remember this device</label>{error && <div className="auth-error">{error}</div>}<button className="primary-button auth-submit" disabled={loading}>{loading ? "Signing in…" : "Sign in to FacultyFlow"}</button></form><p className="auth-footnote">Forgot your password? Contact your department administrator. Your role is loaded automatically after sign-in.</p></div><div className="auth-side"><span className="eyebrow">Faculty appointment system</span><h2>Advising is a conversation, not a queue.</h2><p>Built for final-year computer science departments: thesis guidance, capstone reviews, code clinics, and the people who make them possible.</p><div className="auth-points"><span>✓ Role-based access</span><span>✓ Google Sheets data layer</span><span>✓ Faculty-first scheduling</span></div></div></div>;
 }
 
 function AppointmentTable({ appointments, services, staff, onEdit, onStatusChange, canEdit }) {
@@ -94,9 +112,9 @@ export default function App() {
   const isAdmin = session?.user.role === "admin";
   const canEditAppointments = session?.user.role === "admin" || session?.user.role === "teacher" || session?.user.role === "student";
 
-  const handleLogin = async (email, password) => {
+  const handleLogin = async (email, password, rememberDevice) => {
     setLoginLoading(true); setLoginError("");
-    try { const result = await apiCall("login", { email, password }); const next = { token: result.token, expiresAt: result.expiresAt, user: result.user }; saveSession(next); setSession(next); setLoading(true); }
+    try { const result = await apiCall("login", { email, password }); const next = { token: result.token, expiresAt: result.expiresAt, user: result.user }; saveSession(next, rememberDevice); setSession(next); setLoading(true); }
     catch (error) { setLoginError(error.message); }
     finally { setLoginLoading(false); }
   };
