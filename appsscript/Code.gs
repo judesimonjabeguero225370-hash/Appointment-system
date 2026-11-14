@@ -11,7 +11,8 @@ const SHEETS = {
   services: "Services",
   staff: "Staff",
   users: "Users",
-  sessions: "Sessions"
+  sessions: "Sessions",
+  passwordResetRequests: "PasswordResetRequests"
 };
 
 const HEADERS = {
@@ -19,7 +20,8 @@ const HEADERS = {
   Services: ["id", "name", "duration", "price", "active", "description", "createdAt", "updatedAt"],
   Staff: ["id", "name", "email", "role", "active", "createdAt", "updatedAt"],
   Users: ["id", "fullName", "email", "passwordHash", "role", "department", "teacherId", "active", "createdAt", "updatedAt"],
-  Sessions: ["token", "userId", "expiresAt", "createdAt"]
+  Sessions: ["token", "userId", "expiresAt", "createdAt"],
+  PasswordResetRequests: ["id", "email", "requestedAt", "status", "processedBy", "processedAt"]
 };
 
 const ACTIVE_APPOINTMENT_STATUSES = ["pending", "confirmed"];
@@ -83,6 +85,8 @@ function handleAction_(action, data) {
       return { status: "ok" };
     case "login":
       return login_(data);
+    case "requestPasswordReset":
+      return requestPasswordReset_(data);
     case "me":
       return { user: requireUser_(data) };
     case "getDashboard": {
@@ -132,6 +136,9 @@ function handleAction_(action, data) {
     case "updateUser":
       requireRole_(data, "admin");
       return { user: updateUser_(data) };
+    case "listPasswordResetRequests":
+      requireRole_(data, "admin");
+      return { requests: readRecords_(SHEETS.passwordResetRequests) };
     default:
       throw new Error("Unknown action: " + action);
   }
@@ -141,12 +148,22 @@ function login_(input) {
   const email = clean_(input.email).toLowerCase();
   const password = clean_(input.password);
   if (!email || !password) throw new Error("Email and password are required.");
-  const user = readRecords_(SHEETS.users).find(function(item) { return String(item.email).toLowerCase() === email && item.active; });
+  const users = readRecords_(SHEETS.users);
+  if (!users.length) throw new Error("No user accounts exist yet. Run setup(), then createAdminUser(...) in Apps Script before signing in.");
+  const user = users.find(function(item) { return String(item.email).toLowerCase() === email && item.active; });
   if (!user || !verifyPassword_(password, user.passwordHash)) throw new Error("Invalid email or password.");
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000).toISOString();
   appendRecord_(SHEETS.sessions, { token: token, userId: user.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
   return { token: token, expiresAt: expiresAt, user: safeUser_(user) };
+}
+
+function requestPasswordReset_(input) {
+  const email = clean_(input.email).toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid university email address.");
+  const exists = readRecords_(SHEETS.users).some(function(item) { return String(item.email).toLowerCase() === email; });
+  if (exists) appendRecord_(SHEETS.passwordResetRequests, { id: makeId_("RST"), email: email, requestedAt: new Date().toISOString(), status: "open", processedBy: "", processedAt: "" });
+  return { message: "If an account exists for that email, your department administrator will review the request." };
 }
 
 function requireUser_(data) {

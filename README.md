@@ -69,6 +69,14 @@ Save that helper, select `createMyFirstAdmin`, run it once, and then remove the 
 
 For teacher accounts, select the matching teacher profile in **Teacher account link**. That link is how the API limits a teacher to their own appointments.
 
+### If login says “Invalid email or password”
+
+Confirm that you ran `setup()` using the latest `Code.gs`, created an administrator with `createAdminUser(...)`, and deployed a new Apps Script Web App version. The email must match the account exactly apart from letter capitalization, and the password must be the one used when the account was created. If the `Users` sheet is empty, the API now displays a specific message telling you to create the first administrator.
+
+### Forgot account or password
+
+The login screen includes **Forgot your password or account?**. The request is written to the `PasswordResetRequests` sheet without revealing whether an email exists. An administrator can review the request, open **Users & roles**, edit the matching account, and set a new password. This administrator-reviewed flow is safer than exposing a password-reset token through a Google Sheet.
+
 ## 3. Deploy the Apps Script API
 
 1. In Apps Script, select **Deploy → New deployment**.
