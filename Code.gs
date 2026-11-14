@@ -84,8 +84,8 @@ function register_(input) {
   const fullName = clean_(input.fullName);
   const email = clean_(input.email).toLowerCase();
   const password = clean_(input.password);
-  if (!fullName) throw new Error("Please enter your name.");
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Please enter a valid email address.");
+  if (!fullName) throw new Error("Test");
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("judesimonjabeguero225370@gmail.com");
   if (password.length < 8) throw new Error("Your password needs at least 8 characters.");
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
