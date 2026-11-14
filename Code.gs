@@ -129,17 +129,25 @@ function requireUser_(data) {
 function safeUser_(u) { return { id: u.id, fullName: u.fullName, email: u.email }; }
 
 /** Emails a 6-digit code (valid 15 minutes). Always answers the same, so emails can't be probed. */
+const RESET_COOLDOWN_SECONDS = 45;   // minimum gap between two codes for the same email (the app's "Resend" button waits the same time)
+
 function requestPasswordReset_(input) {
   const email = clean_(input.email).toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Please enter a valid email address.");
+  const reply = { message: "If that email has an account, we've sent a 6-digit code to it. It usually arrives within a minute. Check your Spam or Promotions folder too." };
   const user = readRecords_(SHEETS.users).find(function (u) { return String(u.email).toLowerCase() === email && u.active; });
-  if (user) {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    deleteRows_(SHEETS.resets, 0, email);
-    appendRecord_(SHEETS.resets, { email: email, codeHash: hashPassword_(code), expiresAt: new Date(Date.now() + 15 * 60000).toISOString(), attempts: 0, createdAt: new Date().toISOString() });
-    sendEmail_(email, "🔐 Your " + APP_NAME + " code: " + code, resetEmail_(user, code));
-  }
-  return { message: "If that email has an account, we've sent a 6-digit code to it." };
+  if (!user) return reply;
+
+  // Someone tapping the button repeatedly would burn through the daily email quota, so ignore requests that come too fast.
+  const lastRequest = readRecords_(SHEETS.resets).filter(function (r) { return String(r.email).toLowerCase() === email; })[0];
+  if (lastRequest && Date.now() - new Date(lastRequest.createdAt).getTime() < RESET_COOLDOWN_SECONDS * 1000) return reply;
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  deleteRows_(SHEETS.resets, 0, email);
+  appendRecord_(SHEETS.resets, { email: email, codeHash: hashPassword_(code), expiresAt: new Date(Date.now() + 15 * 60000).toISOString(), attempts: 0, createdAt: new Date().toISOString() });
+  const sent = sendEmail_(email, APP_NAME + " password reset code: " + code, resetEmail_(user, code), null, "Your " + APP_NAME + " password reset code is " + code + ". It works for 15 minutes. If you didn't ask for this, ignore this email.");
+  if (!sent) deleteRows_(SHEETS.resets, 0, email);   // nothing was delivered, so let the person try again straight away
+  return reply;
 }
 
 function resetPassword_(input) {
@@ -161,7 +169,7 @@ function resetPassword_(input) {
     user.updatedAt = new Date().toISOString();
     updateRecord_(SHEETS.users, user);
     sheet.deleteRow(i + 1);
-    readRecords_(SHEETS.sessions).filter(function (s) { return s.userId === user.id; }).forEach(function (s) { deleteRows_(SHEETS.sessions, 0, s.token); });
+    deleteRows_(SHEETS.sessions, 1, user.id);   // sign out every device
     return { message: "Password updated. You can sign in now." };
   }
   throw new Error("That code isn't valid. Please request a new one.");
@@ -374,16 +382,44 @@ function emailLayout_(eyebrow, heading, bodyHtml, preheader) {
     "</table></td></tr></table></body></html>";
 }
 
-/** Returns true when the email went out. Never throws, so a mail problem can't break a booking. */
-function sendEmail_(to, subject, html, attachments) {
-  const base = { to: to, subject: subject, name: APP_NAME, noReply: true };
+/**
+ * Returns true when the email went out. Never throws, so a mail problem can't break a booking.
+ * Tries (1) MailApp with the logo, (2) MailApp without it, (3) GmailApp. The last error is kept in the
+ * script property LAST_EMAIL_ERROR so you can see why mail failed (run checkEmail() from the editor).
+ */
+function sendEmail_(to, subject, html, attachments, plainText) {
+  const text = plainText || String(html).replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&zwnj;/g, " ").replace(/[ \t]+/g, " ").trim().slice(0, 1500);
+  const base = { to: to, subject: subject, name: APP_NAME, body: text };
   if (attachments && attachments.length) base.attachments = attachments;
-  try { MailApp.sendEmail(Object.assign({ htmlBody: html, inlineImages: { qorvenalogo: logoBlob_() } }, base)); return true; }
-  catch (error) {
-    console.error("Email to " + to + " failed, retrying without the logo: " + error);
-    try { MailApp.sendEmail(Object.assign({ htmlBody: html.replace(/<img[^>]*cid:qorvenalogo[^>]*>/, "") }, base)); return true; }
-    catch (error2) { console.error("Email to " + to + " failed: " + error2); return false; }
+  const attempts = [
+    function () { MailApp.sendEmail(Object.assign({ htmlBody: html, inlineImages: { qorvenalogo: logoBlob_() } }, base)); },
+    function () { MailApp.sendEmail(Object.assign({ htmlBody: html.replace(/<img[^>]*cid:qorvenalogo[^>]*>/, "") }, base)); },
+    function () { GmailApp.sendEmail(to, subject, text, { htmlBody: html.replace(/<img[^>]*cid:qorvenalogo[^>]*>/, ""), name: APP_NAME, attachments: base.attachments || [] }); }
+  ];
+  let lastError = "";
+  for (let i = 0; i < attempts.length; i++) {
+    try { attempts[i](); rememberEmailError_(""); return true; }
+    catch (error) { lastError = String(error && error.message || error); console.error("Email to " + to + " failed (attempt " + (i + 1) + "): " + lastError); }
   }
+  rememberEmailError_(lastError + " | remaining daily quota: " + safeQuota_());
+  return false;
+}
+
+function safeQuota_() { try { return MailApp.getRemainingDailyQuota(); } catch (e) { return "unknown"; } }
+function rememberEmailError_(message) { try { PropertiesService.getScriptProperties().setProperty("LAST_EMAIL_ERROR", message ? new Date().toISOString() + " " + message : ""); } catch (e) {} }
+
+/**
+ * RUN THIS FIRST if emails don't arrive: it sends a real reset-code email to YOU and reports exactly what went wrong
+ * (missing permission, daily limit reached, ...). Look at the "Execution log" at the bottom of the editor.
+ */
+function checkEmail() {
+  const me = Session.getEffectiveUser().getEmail();
+  const quota = safeQuota_();
+  const ok = sendEmail_(me, APP_NAME + " password reset code: 123456", resetEmail_({ fullName: "Test" }, "123456"), null, "Test reset code 123456");
+  const report = ok ? "OK: a test code email was sent to " + me + ". Remaining emails today: " + safeQuota_() + "." : "FAILED. Remaining daily quota: " + quota + ". Reason: " + (PropertiesService.getScriptProperties().getProperty("LAST_EMAIL_ERROR") || "unknown") +
+    ". If it mentions permission/authorization, run setup() again and approve everything, then redeploy (Deploy > Manage deployments > Edit > New version).";
+  console.log(report);
+  return report;
 }
 
 /** A calendar file (.ics) so the appointment can go into Apple, Outlook or Google Calendar in one tap. */
@@ -496,3 +532,4 @@ function makeId_(prefix) { return prefix + "-" + Utilities.getUuid().split("-")[
 function clean_(v) { return v === undefined || v === null ? "" : String(v).trim(); }
 function esc_(v) { return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function json_(payload) { return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON); }
+
