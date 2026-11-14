@@ -43,10 +43,10 @@ async function adminApi(action, data, token) {
   const copy = (x) => JSON.parse(JSON.stringify(x));
   switch (action) {
     case "adminLogin":
-      if (data.email === "admin@qorvena.app" && data.password === "admin1234") return { token: "ADM-demo", expiresAt: "", admin: { id: "ADM-1", fullName: "Demo Admin", email: data.email } };
-      throw new Error("Incorrect admin email or password.");
+      if (data.email === "admin" && data.password === "admin") return { token: "ADM-demo", expiresAt: "", admin: { id: "ADM-1", fullName: "Demo Admin", email: data.email } };
+      throw new Error("Incorrect admin username or password.");
     case "adminLogout": return { status: "ok" };
-    case "adminOverview": return { admin: { id: "ADM-1", fullName: "Demo Admin", email: "admin@qorvena.app" }, ...copy(demo) };
+    case "adminOverview": return { admin: { id: "ADM-1", fullName: "Demo Admin", email: "admin" }, ...copy(demo) };
     case "adminSetUserActive": demo.users.find((u) => u.id === data.id).active = !!data.active; return { id: data.id, active: !!data.active };
     case "adminDeleteUser": demo.users = demo.users.filter((u) => u.id !== data.id); demo.appointments = demo.appointments.filter((a) => a.userId !== data.id); return { status: "deleted" };
     case "adminSendReset": return { message: "Demo mode: no email was sent." };
@@ -101,11 +101,11 @@ function AdminLogin({ onDone, onExit }) {
       <div className="al-badge"><Logo size={46} /><span className="al-shield"><Icon name="shield" /></span></div>
       <h1>Admin portal</h1>
       <p className="muted">Restricted area for {APP_NAME} administrators. This sign-in is separate from the one customers use.</p>
-      <div className="ff"><input id="ad-email" type="email" placeholder=" " required autoFocus autoComplete="username" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} /><label htmlFor="ad-email">Admin email</label></div>
+      <div className="ff"><input id="ad-email" type="text" placeholder=" " required autoFocus autoComplete="username" autoCapitalize="none" spellCheck="false" value={email} onChange={(e) => setEmail(e.target.value)} /><label htmlFor="ad-email">Username</label></div>
       <div className="ff ff-pass"><input id="ad-pass" type={show ? "text" : "password"} placeholder=" " required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /><label htmlFor="ad-pass">Password</label><button type="button" className="show-btn" aria-pressed={show} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div>
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       <button className="btn btn-primary btn-block go" disabled={busy || !email || !password}>{busy ? <span className="spinner" /> : null}<span>Sign in to admin</span>{!busy && <span className="go-arrow" aria-hidden="true">→</span>}</button>
-      {!isConfigured && <p className="al-hint">Demo mode: use <b>admin@qorvena.app</b> / <b>admin1234</b></p>}
+      {!isConfigured && <p className="al-hint">Demo mode: use <b>admin</b> / <b>admin</b></p>}
       <button type="button" className="foot-btn al-back" onClick={onExit}><span className="ico" aria-hidden="true">←</span>Back to {APP_NAME}</button>
     </form>
   </div>;
