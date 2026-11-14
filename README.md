@@ -28,6 +28,8 @@ src/styles.css        Styles + animations
 7. **Password-reset emails not arriving?** Run `checkEmail()` in Apps Script and read the Execution log. It sends a real code email to you and tells you the exact reason if it fails (missing permission, daily limit...). If it mentions permission, run `setup()` again, approve everything and redeploy a **New version**.
 8. **Preview the emails** – run `sendPreviewEmails()` in Apps Script to receive the booked, updated, reminder and reset-code emails in your inbox.
 
+9. **Admin portal (separate sign-in)** – in Apps Script run `setup()` again (it adds an `Admins` sheet), then open *Project Settings → Script properties* and add `ADMIN_EMAIL`, `ADMIN_PASSWORD` (10+ characters) and optionally `ADMIN_NAME`. Run `createAdmin()`; the password is stored hashed and `ADMIN_PASSWORD` is deleted right away. Sign in on your site at `/#admin` (or the **Admin portal** button in the footer). Run `createAdmin()` again any time to change the admin password. Admins can see an overview with charts, manage users (deactivate, send reset code, delete) and manage every appointment. Admin sessions last 8 hours and 5 wrong passwords lock the account for 10 minutes. In demo mode the admin login is `admin@qorvena.app` / `admin1234`.
+
 After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → New version*.
 
 ### Good to know
@@ -36,6 +38,9 @@ After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → 
 - **Reminder accuracy:** reminders go out within ~5 minutes of the chosen time.
 - **Turn off public sign-up:** add Script Property `ALLOW_SIGNUP` = `false`.
 - **Coming from the old FacultyFlow sheet?** Use a new Google Sheet (the columns changed). Old `Services`, `Staff` and `PasswordResetRequests` tabs aren't used any more.
+
+## Dark mode
+A sun/moon switch (top bar, sign-in, About and Admin pages) toggles dark mode. It follows the device setting until the user picks one, then remembers the choice.
 
 ## Local development
 ```

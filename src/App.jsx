@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { APP_NAME, apiCall, isConfigured } from "./api";
 import Brand, { Logo } from "./Brand";
 import About from "./About";
+import Admin from "./Admin";
+import ThemeToggle from "./Theme";
+import { StatTiles, MiniCalendar, QuickBook, ReminderCard, Tips } from "./Dash";
 
 /* ───────── helpers ───────── */
 
@@ -99,7 +102,7 @@ function PasswordField({ id, label, value, onChange, autoComplete }) {
 
 /* ───────── sign in / sign up / reset ───────── */
 
-function AuthScreen({ onAuth, onAbout, onTeam }) {
+function AuthScreen({ onAuth, onAbout, onTeam, onAdmin }) {
   const [mode, setMode] = useState("signin");           // signin | signup | recovery
   const [step, setStep] = useState(1);                  // recovery: 1 = ask for code, 2 = enter code
   const [name, setName] = useState("");
@@ -147,7 +150,7 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
   const allOk = checks.every(Boolean);
   const label = mode === "signin" ? "Sign in" : mode === "signup" ? "Create my account" : step === 1 ? "Send me a code" : "Save new password";
 
-  return <div className="auth-shell"><div className="blob blob-a" /><div className="blob blob-b" />
+  return <div className="auth-shell"><div className="blob blob-a" /><div className="blob blob-b" /><div className="auth-theme"><ThemeToggle /></div>
     <div className="auth-card spot"><Brand />
       {mode !== "recovery" && <div className="tabs" role="tablist"><span className="tab-pill" style={{ transform: `translateX(${mode === "signup" ? 100 : 0}%)` }} /><button type="button" role="tab" aria-selected={mode === "signin"} onClick={() => go("signin")}>Sign in</button><button type="button" role="tab" aria-selected={mode === "signup"} onClick={() => go("signup")}>Create account</button></div>}
       <div className="auth-body" key={mode + step}>
@@ -168,8 +171,10 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
         </form>
         {mode === "recovery" && step === 2 && <p className="resend muted">Didn't get it? Check Spam, then <button type="button" className="link" disabled={busy || wait > 0} onClick={resend}>{wait > 0 ? `send a new code in ${wait}s` : "send a new code"}</button></p>}
         {mode === "recovery" && <button className="link center" onClick={() => go("signin")}>← Back to sign in</button>}
-        <button className="about-link" onClick={onAbout}>✦ Discover {APP_NAME} &amp; its meaning</button>
-        <button className="about-link auth-team-mobile" onClick={onTeam}>Meet our team →</button>
+        <div className="auth-extra">
+          <button type="button" className="foot-btn" onClick={onAbout}><span className="ico" aria-hidden="true">✦</span>Discover {APP_NAME} &amp; its meaning<span className="arr" aria-hidden="true">→</span></button>
+          <button type="button" className="foot-btn auth-team-mobile" onClick={onTeam}><span className="ico" aria-hidden="true">👥</span>Meet our team<span className="arr" aria-hidden="true">→</span></button>
+        </div>
       </div>
     </div>
     <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a friendly reminder just before it starts.</p>
@@ -178,7 +183,8 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
         <div className="notif n2"><Logo size={34} /><div><b>{APP_NAME} <em>2m ago</em></b><span>✅ Booked: Project meeting</span></div></div>
       </div>
       <ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul>
-      <button className="about-link about-link-side" onClick={onTeam}>Meet our team →</button></div>
+      <button type="button" className="foot-btn foot-btn-side" onClick={onTeam}><span className="ico" aria-hidden="true">👥</span>Meet our team<span className="arr" aria-hidden="true">→</span></button></div>
+    <button type="button" className="admin-entry" onClick={onAdmin}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.4-3 7.8-7.5 9.5-4.5-1.7-7.5-5.1-7.5-9.5V6L12 3Z" /></svg>Admin portal</button>
   </div>;
 }
 
@@ -232,7 +238,11 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [page, setPage] = useState(() => (typeof location !== "undefined" && (location.hash === "#about" || location.hash === "#team") ? "about" : "home"));
   const [aboutTarget, setAboutTarget] = useState(() => (typeof location !== "undefined" && location.hash === "#team" ? "team" : ""));
+  const [adminRoute, setAdminRoute] = useState(() => typeof location !== "undefined" && location.hash === "#admin");
   const toastId = useRef(0);
+  useEffect(() => { const sync = () => setAdminRoute(location.hash === "#admin"); window.addEventListener("hashchange", sync); return () => window.removeEventListener("hashchange", sync); }, []);
+  const openAdmin = () => { try { history.replaceState(null, "", "#admin"); } catch { /* ignore */ } setAdminRoute(true); window.scrollTo({ top: 0 }); };
+  const closeAdmin = () => { try { history.replaceState(null, "", location.pathname + location.search); } catch { /* ignore */ } setAdminRoute(false); setPage("home"); window.scrollTo({ top: 0 }); };
   const goPage = (next, target = "") => { setAboutTarget(target); setPage(next); try { history.replaceState(null, "", next === "about" ? (target === "team" ? "#team" : "#about") : location.pathname + location.search); } catch { /* ignore */ } window.scrollTo({ top: 0 }); };
 
   const notify = (message, type = "success") => setToast({ message, type, id: ++toastId.current });
@@ -264,7 +274,7 @@ export default function App() {
   };
   const signOut = () => { if (isConfigured && session?.token) apiCall("logout", {}, session.token).catch(() => {}); clearSession(); setSession(isConfigured ? null : { token: "demo", user: demoUser }); if (isConfigured) setAppointments([]); };
 
-  const openNew = () => { setForm({ id: "", title: "", date: addDays(0), time: roundedNextHour(), remindBefore: 1440, notes: "" }); setModal(true); };
+  const openNew = (opts) => { const o = opts && typeof opts === "object" && !("nativeEvent" in opts) ? opts : {}; setForm({ id: "", title: o.title || "", date: o.date || addDays(0), time: roundedNextHour(), remindBefore: 1440, notes: "" }); setModal(true); };
   const openEdit = (a) => { setForm({ ...a, remindBefore: Number(a.remindBefore) }); setModal(true); };
 
   const save = async (event) => {
@@ -290,28 +300,44 @@ export default function App() {
   const markDone = (a) => withExit(a.id, async () => { try { await remote("updateAppointment", { ...a, status: "done" }); setAppointments((l) => l.map((x) => x.id === a.id ? { ...x, status: "done" } : x)); notify("Nice — marked as done."); } catch (e) { notify(e.message, "error"); } });
   const remove = (a) => { setConfirmId(null); withExit(a.id, async () => { try { await remote("deleteAppointment", { id: a.id }); setAppointments((l) => l.filter((x) => x.id !== a.id)); notify("Appointment deleted."); } catch (e) { notify(e.message, "error"); } }); };
 
+  if (adminRoute) return <Admin onExit={closeAdmin} />;
   if (page === "about") return <About key={aboutTarget || "top"} jumpTo={aboutTarget} onBack={() => goPage("home")} backLabel={isConfigured && !session ? "Back to sign in" : "Back to my appointments"} />;
-  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} onAbout={() => goPage("about")} onTeam={() => goPage("about", "team")} />;
+  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} onAbout={() => goPage("about")} onTeam={() => goPage("about", "team")} onAdmin={openAdmin} />;
 
   const list = tab === "upcoming" ? upcoming : past;
   const groups = tab === "upcoming" ? ["Today", "Tomorrow", "This week", "Later"].map((g) => [g, list.filter((a) => groupOf(a) === g)]).filter(([, items]) => items.length) : [["", list]];
   let counter = 0;
 
   return <div className="app">
-    <header className="topbar"><Brand /><div className="user"><button className="link nav-link" onClick={() => goPage("about")}>About</button><span className="avatar">{initials(session.user.fullName)}</span><span className="user-name">{session.user.fullName}</span>{isConfigured && <button className="link" onClick={signOut}>Sign out</button>}</div></header>
+    <header className="topbar"><Brand /><div className="user"><ThemeToggle /><button type="button" className="nav-pill nav-about" onClick={() => goPage("about")}>About</button><span className="avatar">{initials(session.user.fullName)}</span><span className="user-name">{session.user.fullName}</span>{isConfigured && <button type="button" className="nav-pill nav-out" onClick={signOut}>Sign out</button>}</div></header>
     {!isConfigured && <div className="demo-banner">Demo mode — connect the backend to save appointments and send emails.</div>}
     <main className="content">
       <section className="hero"><div><p className="muted">{greeting}, {session.user.fullName.split(" ")[0]} 👋</p>
         {next ? <><h1>Next up: {next.title}</h1><p className="hero-when"><span className="bell">🔔</span>{fmtLong(next)} at {fmtTime(next)} <b>{relative(next, now)}</b></p></> : <><h1>Nothing coming up</h1><p className="hero-when">Add an appointment and we'll remind you by email.</p></>}</div>
         <button className="btn btn-primary btn-lg" onClick={openNew}><span className="plus">+</span> New appointment</button></section>
 
+      <StatTiles appointments={appointments} upcoming={upcoming} now={now} />
+      <div className="dash"><div className="dash-main">
       <div className="tabs tabs-wide" role="tablist"><span className="tab-pill" style={{ transform: `translateX(${tab === "past" ? 100 : 0}%)` }} /><button role="tab" aria-selected={tab === "upcoming"} onClick={() => setTab("upcoming")}>Upcoming <em>{upcoming.length}</em></button><button role="tab" aria-selected={tab === "past"} onClick={() => setTab("past")}>Past <em>{past.length}</em></button></div>
 
       {loading ? <div className="skeletons">{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ "--i": i }} />)}</div>
         : !list.length ? <div className="empty" key={tab}><div className="empty-bell">🔔</div><h3>{tab === "upcoming" ? "You're all clear" : "No past appointments yet"}</h3><p className="muted">{tab === "upcoming" ? "Tap “New appointment” to add one — we'll remind you by email." : "Finished and missed appointments show up here."}</p>{tab === "upcoming" && <button className="btn btn-primary" onClick={openNew}>Add your first appointment</button>}</div>
         : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <AppointmentCard key={a.id} a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} />)}</div>)}</div>}
+      <Tips />
+      </div>
+      <aside className="dash-side" aria-label="Calendar and shortcuts">
+        <MiniCalendar appointments={appointments} now={now} onPick={(date) => openNew({ date })} />
+        <QuickBook onPick={(title) => openNew({ title })} />
+        <ReminderCard appointments={appointments} email={session.user.email} configured={isConfigured} />
+      </aside></div>
     </main>
-    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><span className="foot-links"><button className="link" onClick={() => goPage("about")}>The meaning of the name</button><button className="link" onClick={() => goPage("about", "team")}>Meet the creators</button></span></footer>
+    <footer className="app-foot"><div className="foot-card">
+      <div className="foot-brand"><Logo size={40} /><div><strong>{APP_NAME}</strong><span>Appointments, organized.</span></div></div>
+      <div className="foot-links">
+        <button type="button" className="foot-btn" onClick={() => goPage("about")}><span className="ico" aria-hidden="true">✦</span>The meaning of the name<span className="arr" aria-hidden="true">→</span></button>
+        <button type="button" className="foot-btn" onClick={() => goPage("about", "team")}><span className="ico" aria-hidden="true">👥</span>Meet our team<span className="arr" aria-hidden="true">→</span></button>
+        <button type="button" className="foot-btn foot-btn-quiet" onClick={openAdmin}><span className="ico" aria-hidden="true">🛡</span>Admin portal<span className="arr" aria-hidden="true">→</span></button>
+      </div></div></footer>
     <button className="fab" onClick={openNew} aria-label="New appointment">+</button>
     {modal && form && <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setModal(false)}><div className="modal" role="dialog" aria-modal="true" aria-label={form.id ? "Edit appointment" : "New appointment"}><div className="modal-head"><h2>{form.id ? "Edit appointment" : "New appointment"}</h2><button className="icon-btn" onClick={() => setModal(false)} aria-label="Close">×</button></div><AppointmentForm form={form} setForm={setForm} saving={saving} onSubmit={save} onClose={() => setModal(false)} email={session.user.email} /></div></div>}
     <Toast toast={toast} onClose={() => setToast(null)} />

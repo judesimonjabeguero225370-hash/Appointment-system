@@ -13,16 +13,18 @@
 
 const APP_NAME = "Qorvena";
 
-const SHEETS = { appointments: "Appointments", users: "Users", sessions: "Sessions", resets: "PasswordResets" };
+const SHEETS = { appointments: "Appointments", users: "Users", sessions: "Sessions", resets: "PasswordResets", admins: "Admins" };
 
 const HEADERS = {
   Appointments: ["id", "userId", "title", "date", "time", "timezone", "remindBefore", "status", "notes", "reminderSentAt", "createdAt", "updatedAt"],
   Users: ["id", "fullName", "email", "passwordHash", "active", "createdAt", "updatedAt"],
   Sessions: ["token", "userId", "expiresAt", "createdAt"],
-  PasswordResets: ["email", "codeHash", "expiresAt", "attempts", "createdAt"]
+  PasswordResets: ["email", "codeHash", "expiresAt", "attempts", "createdAt"],
+  Admins: ["id", "fullName", "email", "passwordHash", "active", "createdAt", "updatedAt"]
 };
 
 const SESSION_HOURS = 24 * 14;          // stay signed in for 14 days
+const ADMIN_SESSION_HOURS = 8;          // admins are signed out after 8 hours
 const STATUSES = ["upcoming", "done"];
 const REMINDER_CHECK_MINUTES = 5;       // how often reminders are checked (1, 5, 10, 15 or 30)
 
@@ -70,6 +72,14 @@ function handleAction_(action, data) {
     case "me": return { user: requireUser_(data) };
     case "requestPasswordReset": return requestPasswordReset_(data);
     case "resetPassword": return resetPassword_(data);
+    case "adminLogin": return adminLogin_(data);
+    case "adminLogout": return logout_(data);
+    case "adminOverview": return adminOverview_(requireAdmin_(data));
+    case "adminSetUserActive": return adminSetUserActive_(data, requireAdmin_(data));
+    case "adminDeleteUser": return adminDeleteUser_(data, requireAdmin_(data));
+    case "adminSendReset": return adminSendReset_(data, requireAdmin_(data));
+    case "adminDeleteAppointment": return adminDeleteAppointment_(data, requireAdmin_(data));
+    case "adminSetAppointmentStatus": return adminSetAppointmentStatus_(data, requireAdmin_(data));
     case "listAppointments": return { appointments: listAppointments_(requireUser_(data)) };
     case "createAppointment": return createAppointment_(data, requireUser_(data));
     case "updateAppointment": return updateAppointment_(data, requireUser_(data));
@@ -184,6 +194,122 @@ function hashPassword_(password, salt) {
 function verifyPassword_(password, stored) {
   const parts = clean_(stored).split("$");
   return parts.length === 2 && hashPassword_(password, parts[0]) === stored;
+}
+
+/* ───────────── admin portal (separate sign-in, separate Admins sheet) ───────────── */
+
+/**
+ * ONE-TIME: create (or reset) the administrator account.
+ *  1. Project Settings (gear icon) > Script properties > add  ADMIN_EMAIL  and  ADMIN_PASSWORD (10+ characters), optional ADMIN_NAME.
+ *  2. Run  createAdmin()  . The password is stored hashed and ADMIN_PASSWORD is deleted from the properties straight away.
+ *  3. Sign in on your site at  /#admin .   Run it again any time to change the admin password.
+ */
+function createAdmin() {
+  if (!getDatabase_().getSheetByName(SHEETS.admins)) setup();
+  const props = PropertiesService.getScriptProperties();
+  const email = clean_(props.getProperty("ADMIN_EMAIL")).toLowerCase();
+  const password = clean_(props.getProperty("ADMIN_PASSWORD"));
+  const name = clean_(props.getProperty("ADMIN_NAME")) || "Administrator";
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Add the Script Property ADMIN_EMAIL (Project Settings > Script properties), then run createAdmin() again.");
+  if (password.length < 10) throw new Error("Add the Script Property ADMIN_PASSWORD (at least 10 characters), then run createAdmin() again.");
+  const now = new Date().toISOString();
+  const existing = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === email; });
+  if (existing) { existing.fullName = name; existing.passwordHash = hashPassword_(password); existing.active = true; existing.updatedAt = now; updateRecord_(SHEETS.admins, existing); }
+  else appendRecord_(SHEETS.admins, { id: makeId_("ADM"), fullName: name, email: email, passwordHash: hashPassword_(password), active: true, createdAt: now, updatedAt: now });
+  props.deleteProperty("ADMIN_PASSWORD");
+  return "Admin ready: " + email + ". ADMIN_PASSWORD was removed from the script properties. Sign in at your-website/#admin";
+}
+
+function adminLogin_(input) {
+  const email = clean_(input.email).toLowerCase();
+  const password = clean_(input.password);
+  if (!email || !password) throw new Error("Please enter your admin email and password.");
+  const cache = CacheService.getScriptCache();
+  const key = "adminfail:" + email;
+  if (Number(cache.get(key) || 0) >= 5) throw new Error("Too many attempts. Please wait 10 minutes and try again.");
+  const admin = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === email && a.active; });
+  if (!admin || !verifyPassword_(password, admin.passwordHash)) {
+    cache.put(key, String(Number(cache.get(key) || 0) + 1), 600);
+    throw new Error("Incorrect admin email or password.");
+  }
+  cache.remove(key);
+  purgeExpired_(SHEETS.sessions, 2);
+  const token = "ADM-" + Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000).toISOString();
+  appendRecord_(SHEETS.sessions, { token: token, userId: admin.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
+  return { token: token, expiresAt: expiresAt, admin: safeUser_(admin) };
+}
+
+function requireAdmin_(data) {
+  const token = clean_(data.token);
+  if (token.indexOf("ADM-") !== 0) throw new Error("Admin access only. Please sign in as an administrator.");
+  const session = readRecords_(SHEETS.sessions).find(function (s) { return s.token === token; });
+  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) throw new Error("Your session has expired. Please sign in again.");
+  const admin = readRecords_(SHEETS.admins).find(function (a) { return a.id === session.userId && a.active; });
+  if (!admin) throw new Error("This admin account no longer exists.");
+  return safeUser_(admin);
+}
+
+/** Everything the admin dashboard needs in one request (Apps Script is slow per call, so one trip is better than many). */
+function adminOverview_(admin) {
+  const users = readRecords_(SHEETS.users);
+  const appointments = readRecords_(SHEETS.appointments);
+  const byId = {}, counts = {};
+  users.forEach(function (u) { byId[u.id] = u; });
+  appointments.forEach(function (a) { counts[a.userId] = (counts[a.userId] || 0) + 1; });
+  return {
+    admin: admin,
+    users: users.map(function (u) { return { id: u.id, fullName: u.fullName, email: u.email, active: u.active, createdAt: u.createdAt, appointments: counts[u.id] || 0 }; }),
+    appointments: appointments.map(function (a) { const u = byId[a.userId]; return Object.assign({}, a, { userName: u ? u.fullName : "(deleted user)", userEmail: u ? u.email : "" }); })
+  };
+}
+
+function userById_(id) {
+  const user = readRecords_(SHEETS.users).find(function (u) { return u.id === clean_(id); });
+  if (!user) throw new Error("User not found.");
+  return user;
+}
+
+function adminSetUserActive_(input, admin) {
+  const user = userById_(input.id);
+  user.active = input.active === true || String(input.active) === "true";
+  user.updatedAt = new Date().toISOString();
+  updateRecord_(SHEETS.users, user);
+  if (!user.active) deleteRows_(SHEETS.sessions, 1, user.id);   // sign them out everywhere
+  return { id: user.id, active: user.active };
+}
+
+function adminDeleteUser_(input, admin) {
+  const user = userById_(input.id);
+  deleteRows_(SHEETS.appointments, 1, user.id);
+  deleteRows_(SHEETS.sessions, 1, user.id);
+  deleteRows_(SHEETS.resets, 0, user.email);
+  deleteRows_(SHEETS.users, 0, user.id);
+  return { status: "deleted", id: user.id };
+}
+
+function adminSendReset_(input, admin) {
+  const user = userById_(input.id);
+  requestPasswordReset_({ email: user.email });
+  return { message: "A reset code was emailed to " + user.email + "." };
+}
+
+function adminDeleteAppointment_(input, admin) {
+  const id = clean_(input.id);
+  if (!id) throw new Error("Appointment id is required.");
+  deleteRows_(SHEETS.appointments, 0, id);
+  return { status: "deleted", id: id };
+}
+
+function adminSetAppointmentStatus_(input, admin) {
+  const status = clean_(input.status).toLowerCase();
+  if (STATUSES.indexOf(status) === -1) throw new Error("Invalid status.");
+  const current = readRecords_(SHEETS.appointments).find(function (a) { return a.id === clean_(input.id); });
+  if (!current) throw new Error("Appointment not found.");
+  current.status = status;
+  current.updatedAt = new Date().toISOString();
+  updateRecord_(SHEETS.appointments, current);
+  return { id: current.id, status: status };
 }
 
 /* ───────────── appointments ───────────── */

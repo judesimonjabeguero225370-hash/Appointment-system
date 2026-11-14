@@ -1,5 +1,5 @@
 /** Small, dependency-free interaction effects: button ripples + a soft cursor spotlight on cards. */
-const RIPPLE_TARGETS = ".btn, .icon-btn, .about-link, .quick button, .social, .fab, .show-btn";
+const RIPPLE_TARGETS = ".btn, .icon-btn, .about-link, .quick button, .social, .fab, .show-btn, .nav-pill, .foot-btn, .a-btn, .templates button, .admin-entry";
 
 export function initFx() {
   if (typeof window === "undefined") return;

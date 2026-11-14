@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { APP_NAME } from "./api";
 import Brand from "./Brand";
+import ThemeToggle from "./Theme";
 
 const TEAM = [
   { name: "Vinzon, Reven P.", first: "Reven", photo: "/team/reven.jpg", role: "Project Leader", leader: true, fb: "https://www.facebook.com/Reven0011" },
@@ -55,7 +56,7 @@ export default function About({ onBack, backLabel, jumpTo }) {
   }, []);
 
   return <div className="about" ref={root}>
-    <header className="about-nav"><Brand onClick={onBack} /><div className="about-nav-actions"><button className="link nav-link nav-team" onClick={() => toTeam(true)}>Our team</button><button className="btn btn-soft" onClick={onBack}>← {backLabel}</button></div></header>
+    <header className="about-nav"><Brand onClick={onBack} /><div className="about-nav-actions"><ThemeToggle /><button type="button" className="nav-pill nav-team" onClick={() => toTeam(true)}>Our team</button><button className="btn btn-soft" onClick={onBack}>← {backLabel}</button></div></header>
 
     <section className="about-hero">
       <svg className="veins" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
