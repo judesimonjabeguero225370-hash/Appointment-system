@@ -110,8 +110,12 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [wait, setWait] = useState(0);                  // seconds until "Send a new code" is available
 
-  const go = (next) => { setMode(next); setStep(1); setError(""); setInfo(""); setPassword(""); setCode(""); };
+  useEffect(() => { if (wait <= 0) return; const t = setTimeout(() => setWait(wait - 1), 1000); return () => clearTimeout(t); }, [wait]);
+
+  const go = (next) => { setMode(next); setStep(1); setError(""); setInfo(""); setPassword(""); setCode(""); setWait(0); };
+  const resend = () => run(async () => { const r = await apiCall("requestPasswordReset", { email: email.trim().toLowerCase() }); setInfo(r.message); setWait(45); });
   const run = async (task) => { setBusy(true); setError(""); try { await task(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
 
   const submit = (event) => {
@@ -123,7 +127,7 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
         if (name.trim().length < 2) throw new Error("Please enter your name.");
         if (password.length < 8) throw new Error("Your password needs at least 8 characters.");
         const r = await apiCall("register", { fullName: name.trim(), email: cleanEmail, password }); saveEmail(cleanEmail); onAuth(r, remember, true);
-      } else if (step === 1) { const r = await apiCall("requestPasswordReset", { email: cleanEmail }); setInfo(r.message); setStep(2); }
+      } else if (step === 1) { const r = await apiCall("requestPasswordReset", { email: cleanEmail }); setInfo(r.message); setStep(2); setWait(45); }
       else { const r = await apiCall("resetPassword", { email: cleanEmail, code: code.trim(), password }); setMode("signin"); setStep(1); setPassword(""); setCode(""); setInfo(r.message); }
     });
   };
@@ -162,9 +166,10 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
             {error && <div className="alert alert-error" role="alert">{error}{/already exists/i.test(error) && <> <button type="button" className="link" onClick={() => go("signin")}>Sign in</button></>}</div>}
           </TrailRow>
         </form>
+        {mode === "recovery" && step === 2 && <p className="resend muted">Didn't get it? Check Spam, then <button type="button" className="link" disabled={busy || wait > 0} onClick={resend}>{wait > 0 ? `send a new code in ${wait}s` : "send a new code"}</button></p>}
         {mode === "recovery" && <button className="link center" onClick={() => go("signin")}>← Back to sign in</button>}
-        <button className="about-link" onClick={onAbout}>✦ About {APP_NAME} &amp; the name</button>
-        <button className="about-link auth-team-mobile" onClick={onTeam}>Meet the creators →</button>
+        <button className="about-link" onClick={onAbout}>✦ Discover {APP_NAME} &amp; its meaning</button>
+        <button className="about-link auth-team-mobile" onClick={onTeam}>Meet our team →</button>
       </div>
     </div>
     <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a friendly reminder just before it starts.</p>
@@ -173,7 +178,7 @@ function AuthScreen({ onAuth, onAbout, onTeam }) {
         <div className="notif n2"><Logo size={34} /><div><b>{APP_NAME} <em>2m ago</em></b><span>✅ Booked: Project meeting</span></div></div>
       </div>
       <ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul>
-      <button className="about-link about-link-side" onClick={onTeam}>Meet the creators →</button></div>
+      <button className="about-link about-link-side" onClick={onTeam}>Meet our team →</button></div>
   </div>;
 }
 
@@ -306,7 +311,7 @@ export default function App() {
         : !list.length ? <div className="empty" key={tab}><div className="empty-bell">🔔</div><h3>{tab === "upcoming" ? "You're all clear" : "No past appointments yet"}</h3><p className="muted">{tab === "upcoming" ? "Tap “New appointment” to add one — we'll remind you by email." : "Finished and missed appointments show up here."}</p>{tab === "upcoming" && <button className="btn btn-primary" onClick={openNew}>Add your first appointment</button>}</div>
         : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <AppointmentCard key={a.id} a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} />)}</div>)}</div>}
     </main>
-    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><span className="foot-links"><button className="link" onClick={() => goPage("about")}>About the name</button><button className="link" onClick={() => goPage("about", "team")}>Meet the creators</button></span></footer>
+    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><span className="foot-links"><button className="link" onClick={() => goPage("about")}>The meaning of the name</button><button className="link" onClick={() => goPage("about", "team")}>Meet the creators</button></span></footer>
     <button className="fab" onClick={openNew} aria-label="New appointment">+</button>
     {modal && form && <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setModal(false)}><div className="modal" role="dialog" aria-modal="true" aria-label={form.id ? "Edit appointment" : "New appointment"}><div className="modal-head"><h2>{form.id ? "Edit appointment" : "New appointment"}</h2><button className="icon-btn" onClick={() => setModal(false)} aria-label="Close">×</button></div><AppointmentForm form={form} setForm={setForm} saving={saving} onSubmit={save} onClose={() => setModal(false)} email={session.user.email} /></div></div>}
     <Toast toast={toast} onClose={() => setToast(null)} />

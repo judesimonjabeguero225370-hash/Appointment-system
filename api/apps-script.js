@@ -1,3 +1,5 @@
+export const config = { maxDuration: 30 };   // Apps Script + sending an email can take longer than Vercel's 10s default
+
 export default async function handler(request, response) {
   if (request.method !== "POST") {
     response.status(405).json({ success: false, error: "Only POST requests are supported." });

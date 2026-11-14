@@ -7,7 +7,7 @@ No roles: everyone has their own private list. React + Vite front end, Google Ap
 api/apps-script.js    Vercel proxy to Apps Script (keeps your API key private)
 appsscript/Code.gs    Backend: accounts, appointments, email reminders
 src/App.jsx           Sign-in + appointments interface
-src/About.jsx         "About the name" + creators section
+src/About.jsx         Meaning of the name + team organizational chart
 src/Brand.jsx         Logo
 src/fx.js             Button ripples + card spotlight effects
 public/logo.svg|png   Brand logo (site favicon + PNG used inside emails)
@@ -25,7 +25,8 @@ src/styles.css        Styles + animations
 5. **Vercel** – add env var `APPS_SCRIPT_URL` (the URL above). Optional: set an `API_KEY` Script Property in Apps Script and the same value as `APPS_SCRIPT_API_KEY` in Vercel.
 
 6. **(Optional) Links in emails** – add Script Property `APP_URL` = your website address (e.g. `https://qorvena.vercel.app`). Emails then get an "Open Qorvena" button and a "Meet the team" link.
-7. **Preview the emails** – run `sendPreviewEmails()` in Apps Script to receive the booked, updated, reminder and reset-code emails in your inbox.
+7. **Password-reset emails not arriving?** Run `checkEmail()` in Apps Script and read the Execution log. It sends a real code email to you and tells you the exact reason if it fails (missing permission, daily limit...). If it mentions permission, run `setup()` again, approve everything and redeploy a **New version**.
+8. **Preview the emails** – run `sendPreviewEmails()` in Apps Script to receive the booked, updated, reminder and reset-code emails in your inbox.
 
 After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → New version*.
 
@@ -41,6 +42,6 @@ After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → 
 pnpm install && pnpm dev      # runs in demo mode (no emails) unless VITE_APPS_SCRIPT_URL is set
 ```
 
-## Name & creators
-"About the Name QORVENA" and the creators section live in `src/About.jsx` (open from the **About** link, or `/#about`). `/#team` opens the page already scrolled to the creators, which is what **Meet the creators** uses. Team Facebook links are in the `TEAM` list at the top of that file.
-To change a name, role or photo, edit the `TEAM` list at the top of that file; photos are in `public/team/`.
+## Name & team
+"What QORVENA stands for" and the team organizational chart live in `src/About.jsx` (open from the **About** link, or `/#about`). `/#team` opens the page already scrolled to the chart, which is what **Meet our team** uses.
+To change a name, role, photo or Facebook link, edit the `TEAM` list at the top of that file (the member with `leader: true` sits at the top of the chart); photos are in `public/team/`.
