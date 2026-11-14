@@ -85,6 +85,10 @@ function handleAction_(action, data) {
       return { status: "ok" };
     case "login":
       return login_(data);
+    case "register":
+      return register_(data);
+    case "logout":
+      return logout_(data);
     case "requestPasswordReset":
       return requestPasswordReset_(data);
     case "me":
@@ -152,10 +156,43 @@ function login_(input) {
   if (!users.length) throw new Error("No user accounts exist yet. Run setup(), then createAdminUser(...) in Apps Script before signing in.");
   const user = users.find(function(item) { return String(item.email).toLowerCase() === email && item.active; });
   if (!user || !verifyPassword_(password, user.passwordHash)) throw new Error("Invalid email or password.");
+  purgeExpiredSessions_();
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000).toISOString();
   appendRecord_(SHEETS.sessions, { token: token, userId: user.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
   return { token: token, expiresAt: expiresAt, user: safeUser_(user) };
+}
+
+/**
+ * Public self-service sign-up. Always creates a STUDENT account, so nobody can
+ * grant themselves teacher/admin rights. Signs the new user in straight away.
+ * Optional Script Properties:
+ *   ALLOW_SIGNUP = "false"            -> turns public sign-up off
+ *   ALLOWED_EMAIL_DOMAIN = "uni.edu"  -> only that email domain may sign up
+ */
+function register_(input) {
+  const props = PropertiesService.getScriptProperties();
+  if (String(props.getProperty("ALLOW_SIGNUP") || "true").toLowerCase() === "false") throw new Error("Sign-up is turned off. Please ask your department administrator for an account.");
+  const email = clean_(input.email).toLowerCase();
+  const domain = clean_(props.getProperty("ALLOWED_EMAIL_DOMAIN")).toLowerCase().replace(/^@/, "");
+  if (domain && email.split("@")[1] !== domain) throw new Error("Please sign up with your university email (@" + domain + ").");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    createUser_({ fullName: input.fullName, email: email, password: input.password, role: "student", department: input.department || "Computer Science", teacherId: "", active: true });
+  } finally { lock.releaseLock(); }
+  return login_({ email: email, password: input.password });
+}
+
+function logout_(input) {
+  const token = clean_(input.token);
+  if (!token) return { status: "ok" };
+  const sheet = getDatabase_().getSheetByName(SHEETS.sessions);
+  const values = sheet.getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i -= 1) {
+    if (String(values[i][0]) === token) { sheet.deleteRow(i + 1); break; }
+  }
+  return { status: "ok" };
 }
 
 function requestPasswordReset_(input) {
@@ -164,6 +201,14 @@ function requestPasswordReset_(input) {
   const exists = readRecords_(SHEETS.users).some(function(item) { return String(item.email).toLowerCase() === email; });
   if (exists) appendRecord_(SHEETS.passwordResetRequests, { id: makeId_("RST"), email: email, requestedAt: new Date().toISOString(), status: "open", processedBy: "", processedAt: "" });
   return { message: "If an account exists for that email, your department administrator will review the request." };
+}
+
+function purgeExpiredSessions_() {
+  const sheet = getDatabase_().getSheetByName(SHEETS.sessions);
+  const values = sheet.getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i -= 1) {
+    if (new Date(values[i][2]).getTime() <= Date.now()) sheet.deleteRow(i + 1);
+  }
 }
 
 function requireUser_(data) {
@@ -189,7 +234,7 @@ function safeUser_(user) {
 function createUser_(input) {
   const data = normalizeUser_(input);
   validateUser_(data, false);
-  if (readRecords_(SHEETS.users).some(function(item) { return String(item.email).toLowerCase() === data.email; })) throw new Error("A user with this email already exists.");
+  if (readRecords_(SHEETS.users).some(function(item) { return String(item.email).toLowerCase() === data.email; })) throw new Error("An account with this email already exists. Try signing in instead.");
   const now = new Date().toISOString();
   const record = { id: makeId_("USR"), fullName: data.fullName, email: data.email, passwordHash: hashPassword_(data.password), role: data.role, department: data.department, teacherId: data.teacherId, active: data.active, createdAt: now, updatedAt: now };
   appendRecord_(SHEETS.users, record);
@@ -239,7 +284,7 @@ function bytesToHex_(bytes) {
 function createAppointment_(input, user) {
   if (user.role === "teacher" && !user.teacherId) throw new Error("This teacher account is not linked to a teacher profile. Ask an administrator to link it first.");
   const candidate = Object.assign({}, input);
-  if (user.role === "student") candidate.customerEmail = user.email;
+  if (user.role === "student") { candidate.customerEmail = user.email; candidate.status = "pending"; }
   if (user.role === "teacher" && user.teacherId) candidate.staffId = user.teacherId;
   const data = normalizeAppointment_(candidate);
   validateAppointment_(data);

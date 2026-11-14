@@ -20,3 +20,8 @@ Remove the helper after running it. The password is salted and hashed by the bac
 If the project is standalone rather than bound to the Sheet, add `SPREADSHEET_ID` under Apps Script Project Settings → Script properties. You may also add an `API_KEY` script property; set the same value as `APPS_SCRIPT_API_KEY` in Vercel. `setup()` also creates a `PasswordResetRequests` tab. The login screen writes forgot-account requests there, and an administrator can reset the matching user from the Users & roles screen.
 
 Deploy as a Web app with **Execute as: Me** and **Who has access: Anyone**. After editing this file, deploy a new version.
+
+## Self-service sign-up (new)
+Students can create their own account from the login page (always role `student`).
+Optional Script Properties: `ALLOW_SIGNUP` = `false` to disable sign-up, `ALLOWED_EMAIL_DOMAIN` = `youruniversity.edu` to restrict it.
+After updating Code.gs: Deploy > Manage deployments > Edit > New version > Deploy.
