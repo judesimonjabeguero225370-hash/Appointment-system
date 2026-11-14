@@ -50,3 +50,7 @@ pnpm install && pnpm dev      # runs in demo mode (no emails) unless VITE_APPS_S
 ## Name & team
 "What QORVENA stands for" and the team organizational chart live in `src/About.jsx` (open from the **About** link, or `/#about`). `/#team` opens the page already scrolled to the chart, which is what **Meet our team** uses.
 To change a name, role, photo or Facebook link, edit the `TEAM` list at the top of that file (the member with `leader: true` sits at the top of the chart); photos are in `public/team/`.
+
+## Favicon & social share banner
+
+Icons live in `public/` (`favicon.svg`, `favicon.ico`, `favicon-16/32.png`, `apple-touch-icon.png`, `icon-192/512.png`, `icon-maskable-512.png`, `site.webmanifest`) and the share banner is `public/og-image.png` (1200×630; `og-image.jpg` is a lighter copy). The tags are in `index.html`. Social sites need the full address, so set `VITE_SITE_URL` (for example `https://your-site.vercel.app`) in Vercel; if you deploy on Vercel it is picked up automatically. After deploying, refresh the cached preview with the Facebook Sharing Debugger / LinkedIn Post Inspector.
