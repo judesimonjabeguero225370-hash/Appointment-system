@@ -9,7 +9,9 @@ appsscript/Code.gs    Backend: accounts, appointments, email reminders
 src/App.jsx           Sign-in + appointments interface
 src/About.jsx         "About the name" + creators section
 src/Brand.jsx         Logo
-public/team/          Creator photos
+src/fx.js             Button ripples + card spotlight effects
+public/logo.svg|png   Brand logo (site favicon + PNG used inside emails)
+public/team/          Creator photos (uniform 720×720 crops; untouched originals in team-originals/)
 src/api.js            API client
 src/styles.css        Styles + animations
 ```
@@ -21,6 +23,9 @@ src/styles.css        Styles + animations
 3. **Test email** – run `sendTestEmail()`; you should get an email.
 4. **Deploy** – *Deploy → New deployment → Web app* → Execute as **Me**, access **Anyone** → copy the Web app URL.
 5. **Vercel** – add env var `APPS_SCRIPT_URL` (the URL above). Optional: set an `API_KEY` Script Property in Apps Script and the same value as `APPS_SCRIPT_API_KEY` in Vercel.
+
+6. **(Optional) Links in emails** – add Script Property `APP_URL` = your website address (e.g. `https://qorvena.vercel.app`). Emails then get an "Open Qorvena" button and a "Meet the team" link.
+7. **Preview the emails** – run `sendPreviewEmails()` in Apps Script to receive the booked, updated, reminder and reset-code emails in your inbox.
 
 After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → New version*.
 
@@ -37,5 +42,5 @@ pnpm install && pnpm dev      # runs in demo mode (no emails) unless VITE_APPS_S
 ```
 
 ## Name & creators
-"About the Name QORVENA" and the creators section live in `src/About.jsx` (open from the **About** link, or `/#about`).
+"About the Name QORVENA" and the creators section live in `src/About.jsx` (open from the **About** link, or `/#about`). `/#team` opens the page already scrolled to the creators, which is what **Meet the creators** uses. Team Facebook links are in the `TEAM` list at the top of that file.
 To change a name, role or photo, edit the `TEAM` list at the top of that file; photos are in `public/team/`.

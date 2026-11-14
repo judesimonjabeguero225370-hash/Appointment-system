@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { APP_NAME } from "./api";
 import Brand from "./Brand";
 
 const TEAM = [
-  { name: "Vinzon, Reven P.", photo: "/team/reven.jpg", role: "Project Leader", leader: true },
-  { name: "Jabeguero Jude Simon D.", photo: "/team/simon.jpg", role: "Team Member" },
-  { name: "Moreño Jorie F. Jr.", photo: "/team/jorie.jpg", role: "Team Member" },
-  { name: "Medina John Federick J.", photo: "/team/feds.jpg", role: "Team Member" },
-  { name: "Caraan Rovic A.", photo: "/team/rovic.jpg", role: "Team Member" }
+  { name: "Vinzon, Reven P.", first: "Reven", photo: "/team/reven.jpg", role: "Project Leader", leader: true, fb: "https://www.facebook.com/Reven0011" },
+  { name: "Jabeguero Jude Simon D.", first: "Simon", photo: "/team/simon.jpg", role: "Team Member", fb: "https://www.facebook.com/profile.php?id=100008068869833" },
+  { name: "Moreño Jorie F. Jr.", first: "Jorie", photo: "/team/jorie.jpg", role: "Team Member", fb: "https://www.facebook.com/jorie.j.moreno" },
+  { name: "Medina John Federick J.", first: "Federick", photo: "/team/feds.jpg", role: "Team Member", fb: "https://www.facebook.com/fedsmedina.22" },
+  { name: "Caraan Rovic A.", first: "Rovic", photo: "/team/rovic.jpg", role: "Team Member", fb: "https://www.facebook.com/rovic.caraan.9" }
 ];
 const FLOW = [
   { icon: "📥", title: "Appointment requests", text: "Every request starts in one place." },
@@ -16,13 +16,21 @@ const FLOW = [
 ];
 const initials = (name) => name.replace(",", "").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
 
+function FacebookIcon({ size = 18 }) {
+  return <svg className="social-icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12a10 10 0 1 0-11.56 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.44 2.89h-2.34v6.99A10 10 0 0 0 22 12Z" /></svg>;
+}
+
 function Portrait({ member }) {
   const [failed, setFailed] = useState(false);
   return <div className="portrait">{failed ? <span className="portrait-fallback">{initials(member.name)}</span> : <img src={member.photo} alt={`Portrait of ${member.name}`} loading="lazy" decoding="async" onError={() => setFailed(true)} />}</div>;
 }
 
-export default function About({ onBack, backLabel }) {
+export default function About({ onBack, backLabel, jumpTo }) {
   const root = useRef(null);
+  const teamRef = useRef(null);
+  const toTeam = (smooth) => teamRef.current && teamRef.current.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  // "Meet the creators" lands straight on the team, no scrolling needed
+  useLayoutEffect(() => { if (jumpTo === "team") toTeam(false); }, []);
   useEffect(() => {
     const items = root.current.querySelectorAll("[data-reveal]");
     if (!("IntersectionObserver" in window)) { items.forEach((el) => el.classList.add("in")); return; }
@@ -31,11 +39,8 @@ export default function About({ onBack, backLabel }) {
     return () => io.disconnect();
   }, []);
 
-  const leader = TEAM.find((m) => m.leader);
-  const rest = TEAM.filter((m) => !m.leader);
-
   return <div className="about" ref={root}>
-    <header className="about-nav"><Brand onClick={onBack} /><button className="btn btn-soft" onClick={onBack}>← {backLabel}</button></header>
+    <header className="about-nav"><Brand onClick={onBack} /><div className="about-nav-actions"><button className="link nav-link nav-team" onClick={() => toTeam(true)}>The creators</button><button className="btn btn-soft" onClick={onBack}>← {backLabel}</button></div></header>
 
     <section className="about-hero">
       <svg className="veins" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -45,6 +50,7 @@ export default function About({ onBack, backLabel }) {
         <span className="eyebrow" data-reveal style={{ "--d": 0 }}>About the name</span>
         <h1 className="wordmark" aria-label={APP_NAME.toUpperCase()}>{APP_NAME.toUpperCase().split("").map((ch, i) => <span key={i} aria-hidden="true" style={{ "--i": i }}>{ch}</span>)}</h1>
         <p className="etymology" data-reveal style={{ "--d": 1 }}>from the Latin <em>Vena</em> — “vein”</p>
+        <button className="btn btn-glass" data-reveal style={{ "--d": 2 }} onClick={() => toTeam(true)}>Meet the creators <span aria-hidden="true" className="arrow-down">↓</span></button>
       </div>
     </section>
 
@@ -58,14 +64,19 @@ export default function About({ onBack, backLabel }) {
       </div>
     </section>
 
-    <section className="team">
-      <div className="team-head" data-reveal style={{ "--d": 0 }}><span className="eyebrow eyebrow-dark">The creators</span><h2>The people behind {APP_NAME}</h2><p className="muted">The team that designed and built this system.</p></div>
-      <article className="leader" data-reveal style={{ "--d": 1 }}>
-        <Portrait member={leader} />
-        <div className="leader-info"><span className="role-badge">★ {leader.role}</span><h3>{leader.name}</h3><p className="muted">Leading the vision and direction of {APP_NAME}.</p></div>
-      </article>
-      <div className="members">
-        {rest.map((m, i) => <article className="member" key={m.name} data-reveal style={{ "--d": i + 1 }}><Portrait member={m} /><div className="member-info"><h3>{m.name}</h3><span>{m.role}</span></div></article>)}
+    <section className="team" id="team" ref={teamRef}>
+      <div className="team-head" data-reveal style={{ "--d": 0 }}><span className="eyebrow eyebrow-dark">The creators</span><h2>The people behind {APP_NAME}</h2><p className="muted">The team that designed and built this system. Say hi on Facebook!</p></div>
+      <div className="crew">
+        {TEAM.map((m, i) => <article className={`crew-card ${m.leader ? "is-leader" : ""}`} key={m.name} data-reveal style={{ "--d": i }}>
+          <div className="crew-inner spot">
+            <Portrait member={m} />
+            <div className="crew-info">
+              <span className={`role-badge ${m.leader ? "" : "role-plain"}`}>{m.leader ? "★ " : ""}{m.role}</span>
+              <h3>{m.name}</h3>
+              <a className="social" href={m.fb} target="_blank" rel="noopener noreferrer" aria-label={`${m.first} on Facebook (opens in a new tab)`}><FacebookIcon /><span>Facebook</span><i aria-hidden="true">↗</i></a>
+            </div>
+          </div>
+        </article>)}
       </div>
     </section>
 

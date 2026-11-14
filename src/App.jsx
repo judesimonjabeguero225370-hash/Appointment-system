@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { APP_NAME, apiCall, isConfigured } from "./api";
-import Brand from "./Brand";
+import Brand, { Logo } from "./Brand";
 import About from "./About";
 
 /* ───────── helpers ───────── */
@@ -71,14 +71,35 @@ function Toast({ toast, onClose }) {
   return <div className={`toast toast-${toast.type}`} role="status" key={toast.id}><span className="toast-icon">{toast.type === "error" ? "!" : "✓"}</span><p>{toast.message}</p><button onClick={onClose} aria-label="Dismiss">×</button></div>;
 }
 
-function PasswordField({ label, value, onChange, autoComplete, placeholder }) {
+const strengthOf = (pw) => {
+  if (pw.length < 8) return 0;
+  let s = 1;
+  if (pw.length >= 12) s++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+  if (/\d/.test(pw) && (/[^A-Za-z0-9]/.test(pw) || pw.length >= 10)) s++;
+  return Math.min(4, s);
+};
+const STRENGTH_LABELS = ["Too short", "Weak", "Okay", "Good", "Strong"];
+
+function Check() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>; }
+
+/** One stop on the trail: a node on the vein line + its field. The line fills in as each step is completed. */
+function TrailRow({ ok, children, end, active }) {
+  return <div className={`trail-row ${ok ? "ok" : ""} ${end ? "final" : ""} ${active ? "active" : ""}`}><span className="node" aria-hidden="true"><Check /></span><div className="trail-body">{children}</div></div>;
+}
+
+function Field({ id, label, ...input }) {
+  return <div className="ff"><input id={id} placeholder=" " required {...input} /><label htmlFor={id}>{label}</label></div>;
+}
+
+function PasswordField({ id, label, value, onChange, autoComplete }) {
   const [show, setShow] = useState(false);
-  return <label>{label}<div className="password-input"><input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} required autoComplete={autoComplete} /><button type="button" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div></label>;
+  return <div className="ff ff-pass"><input id={id} type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder=" " required autoComplete={autoComplete} /><label htmlFor={id}>{label}</label><button type="button" className="show-btn" aria-pressed={show} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div>;
 }
 
 /* ───────── sign in / sign up / reset ───────── */
 
-function AuthScreen({ onAuth, onAbout }) {
+function AuthScreen({ onAuth, onAbout, onTeam }) {
   const [mode, setMode] = useState("signin");           // signin | signup | recovery
   const [step, setStep] = useState(1);                  // recovery: 1 = ask for code, 2 = enter code
   const [name, setName] = useState("");
@@ -108,29 +129,51 @@ function AuthScreen({ onAuth, onAbout }) {
   };
 
   const title = mode === "signup" ? "Create your account" : mode === "recovery" ? "Reset your password" : "Welcome back";
-  const intro = mode === "signup" ? "Save your appointments and we'll email you a reminder before each one." : mode === "recovery" ? (step === 1 ? "Enter your email and we'll send you a 6-digit code." : "Enter the code we emailed you and choose a new password.") : "Sign in to see your upcoming appointments.";
+  const intro = mode === "signup" ? "Takes about 20 seconds. We'll email you a reminder before each appointment." : mode === "recovery" ? (step === 1 ? "Enter your email and we'll send you a 6-digit code." : "Enter the code we emailed you and choose a new password.") : "Pick up where you left off.";
+
+  const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
+  const showPass = mode !== "recovery" || step === 2;
+  const passOk = mode === "signin" ? password.length > 0 : password.length >= 8;
+  const strength = strengthOf(password);
+  const checks = [];
+  if (mode === "signup") checks.push(name.trim().length >= 2);
+  checks.push(emailOk);
+  if (mode === "recovery" && step === 2) checks.push(code.length === 6);
+  if (showPass) checks.push(passOk);
+  const allOk = checks.every(Boolean);
+  const label = mode === "signin" ? "Sign in" : mode === "signup" ? "Create my account" : step === 1 ? "Send me a code" : "Save new password";
 
   return <div className="auth-shell"><div className="blob blob-a" /><div className="blob blob-b" />
-    <div className="auth-card"><Brand />
+    <div className="auth-card spot"><Brand />
       {mode !== "recovery" && <div className="tabs" role="tablist"><span className="tab-pill" style={{ transform: `translateX(${mode === "signup" ? 100 : 0}%)` }} /><button type="button" role="tab" aria-selected={mode === "signin"} onClick={() => go("signin")}>Sign in</button><button type="button" role="tab" aria-selected={mode === "signup"} onClick={() => go("signup")}>Create account</button></div>}
       <div className="auth-body" key={mode + step}>
         <h1>{title}</h1><p className="muted">{intro}</p>
-        <form onSubmit={submit}>
-          {mode === "signup" && <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Elena Rodriguez" required autoFocus autoComplete="name" /></label>}
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" /></label>
-          {mode === "recovery" && step === 2 && <label>6-digit code<input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="123456" required autoFocus autoComplete="one-time-code" className="code-input" /></label>}
-          {(mode !== "recovery" || step === 2) && <PasswordField label={mode === "recovery" ? "New password" : "Password"} value={password} onChange={setPassword} placeholder={mode === "signin" ? "Your password" : "At least 8 characters"} autoComplete={mode === "signin" ? "current-password" : "new-password"} />}
-          {mode !== "recovery" && <label className="check"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span className="check-box" />Keep me signed in</label>}
-          {info && <div className="alert alert-ok" role="status">{info}</div>}
-          {error && <div className="alert alert-error" role="alert">{error}{/already exists/i.test(error) && <> <button type="button" className="link" onClick={() => go("signin")}>Sign in</button></>}</div>}
-          <button className="btn btn-primary btn-block" disabled={busy}>{busy ? <span className="spinner" /> : null}{mode === "signin" ? "Sign in" : mode === "signup" ? "Create account" : step === 1 ? "Send me a code" : "Save new password"}</button>
+        <form onSubmit={submit} className="trail">
+          {mode === "signup" && <TrailRow ok={name.trim().length >= 2}><Field id="f-name" label="Your name" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="name" /></TrailRow>}
+          <TrailRow ok={emailOk}><Field id="f-email" label="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" inputMode="email" /></TrailRow>
+          {mode === "recovery" && step === 2 && <TrailRow ok={code.length === 6}><Field id="f-code" label="6-digit code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoFocus autoComplete="one-time-code" className="code-input" /></TrailRow>}
+          {showPass && <TrailRow ok={passOk}>
+            <PasswordField id="f-pass" label={mode === "recovery" ? "New password" : "Password"} value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} />
+            {mode !== "signin" && <div className="meter" data-level={strength} aria-live="polite"><span><i /><i /><i /><i /></span><small>{password ? STRENGTH_LABELS[strength] : "Use 8+ characters"}</small></div>}
+            {mode !== "recovery" && <div className="trail-meta"><label className="check"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span className="check-box" />Keep me signed in</label>{mode === "signin" && <button type="button" className="link" onClick={() => go("recovery")}>Forgot password?</button>}</div>}
+          </TrailRow>}
+          <TrailRow end ok={allOk && !busy}><button className="btn btn-primary btn-block go" disabled={busy}>{busy ? <span className="spinner" /> : null}<span>{label}</span>{!busy && <span className="go-arrow" aria-hidden="true">→</span>}</button>
+            {info && <div className="alert alert-ok" role="status">{info}</div>}
+            {error && <div className="alert alert-error" role="alert">{error}{/already exists/i.test(error) && <> <button type="button" className="link" onClick={() => go("signin")}>Sign in</button></>}</div>}
+          </TrailRow>
         </form>
-        {mode === "signin" && <button className="link center" onClick={() => go("recovery")}>Forgot your password?</button>}
         {mode === "recovery" && <button className="link center" onClick={() => go("signin")}>← Back to sign in</button>}
-        <button className="about-link" onClick={onAbout}>✦ About {APP_NAME} &amp; the team</button>
+        <button className="about-link" onClick={onAbout}>✦ About {APP_NAME} &amp; the name</button>
+        <button className="about-link auth-team-mobile" onClick={onTeam}>Meet the creators →</button>
       </div>
     </div>
-    <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a reminder just before it starts.</p><ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul><button className="about-link about-link-side" onClick={onAbout}>Meet the creators →</button></div>
+    <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a friendly reminder just before it starts.</p>
+      <div className="notifs" aria-hidden="true">
+        <div className="notif n1"><Logo size={34} /><div><b>{APP_NAME} <em>now</em></b><span>⏰ Dentist check-up is tomorrow (9:30 AM)</span></div></div>
+        <div className="notif n2"><Logo size={34} /><div><b>{APP_NAME} <em>2m ago</em></b><span>✅ Booked: Project meeting</span></div></div>
+      </div>
+      <ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul>
+      <button className="about-link about-link-side" onClick={onTeam}>Meet the creators →</button></div>
   </div>;
 }
 
@@ -140,7 +183,7 @@ function AppointmentCard({ a, index, now, leaving, confirming, onDone, onEdit, o
   const chip = reminderChip(a);
   const d = startOf(a);
   const rel = isPast ? "" : relative(a, now);
-  return <article className={`card ${leaving ? "leaving" : ""} ${a.status === "done" ? "is-done" : ""}`} style={{ "--i": index }}>
+  return <article className={`card spot ${leaving ? "leaving" : ""} ${a.status === "done" ? "is-done" : ""}`} style={{ "--i": index }}>
     <div className="date-badge"><small>{new Intl.DateTimeFormat("en", { month: "short" }).format(d)}</small><strong>{d.getDate()}</strong></div>
     <div className="card-main"><h3>{a.title}</h3><p className="muted">{fmtLong(a).split(",")[0]} · {fmtTime(a)}{rel && <span className="rel"> · {rel}</span>}</p>
       {a.notes && <p className="notes">{a.notes}</p>}
@@ -182,9 +225,10 @@ export default function App() {
   const [leavingId, setLeavingId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [now, setNow] = useState(Date.now());
-  const [page, setPage] = useState(() => (typeof location !== "undefined" && location.hash === "#about" ? "about" : "home"));
+  const [page, setPage] = useState(() => (typeof location !== "undefined" && (location.hash === "#about" || location.hash === "#team") ? "about" : "home"));
+  const [aboutTarget, setAboutTarget] = useState(() => (typeof location !== "undefined" && location.hash === "#team" ? "team" : ""));
   const toastId = useRef(0);
-  const goPage = (next) => { setPage(next); try { history.replaceState(null, "", next === "about" ? "#about" : location.pathname + location.search); } catch { /* ignore */ } window.scrollTo({ top: 0 }); };
+  const goPage = (next, target = "") => { setAboutTarget(target); setPage(next); try { history.replaceState(null, "", next === "about" ? (target === "team" ? "#team" : "#about") : location.pathname + location.search); } catch { /* ignore */ } window.scrollTo({ top: 0 }); };
 
   const notify = (message, type = "success") => setToast({ message, type, id: ++toastId.current });
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id); }, []);
@@ -241,8 +285,8 @@ export default function App() {
   const markDone = (a) => withExit(a.id, async () => { try { await remote("updateAppointment", { ...a, status: "done" }); setAppointments((l) => l.map((x) => x.id === a.id ? { ...x, status: "done" } : x)); notify("Nice — marked as done."); } catch (e) { notify(e.message, "error"); } });
   const remove = (a) => { setConfirmId(null); withExit(a.id, async () => { try { await remote("deleteAppointment", { id: a.id }); setAppointments((l) => l.filter((x) => x.id !== a.id)); notify("Appointment deleted."); } catch (e) { notify(e.message, "error"); } }); };
 
-  if (page === "about") return <About onBack={() => goPage("home")} backLabel={isConfigured && !session ? "Back to sign in" : "Back to my appointments"} />;
-  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} onAbout={() => goPage("about")} />;
+  if (page === "about") return <About key={aboutTarget || "top"} jumpTo={aboutTarget} onBack={() => goPage("home")} backLabel={isConfigured && !session ? "Back to sign in" : "Back to my appointments"} />;
+  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} onAbout={() => goPage("about")} onTeam={() => goPage("about", "team")} />;
 
   const list = tab === "upcoming" ? upcoming : past;
   const groups = tab === "upcoming" ? ["Today", "Tomorrow", "This week", "Later"].map((g) => [g, list.filter((a) => groupOf(a) === g)]).filter(([, items]) => items.length) : [["", list]];
@@ -262,7 +306,7 @@ export default function App() {
         : !list.length ? <div className="empty" key={tab}><div className="empty-bell">🔔</div><h3>{tab === "upcoming" ? "You're all clear" : "No past appointments yet"}</h3><p className="muted">{tab === "upcoming" ? "Tap “New appointment” to add one — we'll remind you by email." : "Finished and missed appointments show up here."}</p>{tab === "upcoming" && <button className="btn btn-primary" onClick={openNew}>Add your first appointment</button>}</div>
         : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <AppointmentCard key={a.id} a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} />)}</div>)}</div>}
     </main>
-    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><button className="link" onClick={() => goPage("about")}>About the name &amp; creators</button></footer>
+    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><span className="foot-links"><button className="link" onClick={() => goPage("about")}>About the name</button><button className="link" onClick={() => goPage("about", "team")}>Meet the creators</button></span></footer>
     <button className="fab" onClick={openNew} aria-label="New appointment">+</button>
     {modal && form && <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setModal(false)}><div className="modal" role="dialog" aria-modal="true" aria-label={form.id ? "Edit appointment" : "New appointment"}><div className="modal-head"><h2>{form.id ? "Edit appointment" : "New appointment"}</h2><button className="icon-btn" onClick={() => setModal(false)} aria-label="Close">×</button></div><AppointmentForm form={form} setForm={setForm} saving={saving} onSubmit={save} onClose={() => setModal(false)} email={session.user.email} /></div></div>}
     <Toast toast={toast} onClose={() => setToast(null)} />
