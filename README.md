@@ -1,4 +1,4 @@
-# Remindly – appointment reminders
+# Qorvena – appointment management
 
 Sign up, add an appointment, and get an **email confirmation** right away plus a **reminder email** before it starts.
 No roles: everyone has their own private list. React + Vite front end, Google Apps Script + Google Sheets back end.
@@ -6,7 +6,10 @@ No roles: everyone has their own private list. React + Vite front end, Google Ap
 ```
 api/apps-script.js    Vercel proxy to Apps Script (keeps your API key private)
 appsscript/Code.gs    Backend: accounts, appointments, email reminders
-src/App.jsx           The whole interface
+src/App.jsx           Sign-in + appointments interface
+src/About.jsx         "About the name" + creators section
+src/Brand.jsx         Logo
+public/team/          Creator photos
 src/api.js            API client
 src/styles.css        Styles + animations
 ```
@@ -32,3 +35,7 @@ After changing `Code.gs`, redeploy: *Deploy → Manage deployments → Edit → 
 ```
 pnpm install && pnpm dev      # runs in demo mode (no emails) unless VITE_APPS_SCRIPT_URL is set
 ```
+
+## Name & creators
+"About the Name QORVENA" and the creators section live in `src/About.jsx` (open from the **About** link, or `/#about`).
+To change a name, role or photo, edit the `TEAM` list at the top of that file; photos are in `public/team/`.

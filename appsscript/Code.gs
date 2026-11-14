@@ -1,5 +1,5 @@
 /**
- * Remindly – appointment reminder API (Google Apps Script + Google Sheets)
+ * Qorvena – appointment management API (Google Apps Script + Google Sheets)
  *
  * Everyone signs up with an email + password and gets their own private list of appointments.
  * Emails: a confirmation when an appointment is booked, and a reminder before it starts.
@@ -10,7 +10,7 @@
  *  3. Deploy > New deployment > Web app > Execute as: Me, Access: Anyone.
  */
 
-const APP_NAME = "Remindly";
+const APP_NAME = "Qorvena";
 
 const SHEETS = { appointments: "Appointments", users: "Users", sessions: "Sessions", resets: "PasswordResets" };
 
@@ -37,7 +37,7 @@ function setup() {
     if (name === "Appointments") sheet.getRange(2, 4, sheet.getMaxRows() - 1, 2).setNumberFormat("@"); // keep date/time as plain text
   });
   setupReminders();
-  return "Remindly is ready: sheets created and the reminder timer is running. Now deploy the Web app.";
+  return "Qorvena is ready: sheets created and the reminder timer is running. Now deploy the Web app.";
 }
 
 /** Installs (or re-installs) the timer that sends reminder emails. */
@@ -297,7 +297,7 @@ function remindLabel_(m) { return m === 0 ? "At the time" : m < 60 ? m + " minut
 
 function emailLayout_(heading, bodyHtml) {
   return "<div style='font-family:Segoe UI,Arial,sans-serif;background:#eef4f1;padding:28px 12px'><div style='max-width:480px;margin:auto;background:#fff;border-radius:18px;padding:28px;color:#20302e;line-height:1.55'>" +
-    "<div style='font-weight:800;color:#2f6f63;font-size:15px;margin-bottom:14px'>🔔 " + APP_NAME + "</div><h2 style='margin:0 0 12px;font-size:22px'>" + esc_(heading) + "</h2>" + bodyHtml + "</div></div>";
+    "<div style='font-weight:800;color:#2f6f63;font-size:16px;margin-bottom:14px'><span style='display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:8px;background:#2f6f63;color:#fff;margin-right:8px'>Q</span>" + APP_NAME + "</div><h2 style='margin:0 0 12px;font-size:22px'>" + esc_(heading) + "</h2>" + bodyHtml + "</div></div>";
 }
 
 /** Returns true when the email went out. Never throws, so a mail problem can't break a booking. */

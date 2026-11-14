@@ -1,4 +1,4 @@
-export const APP_NAME = "Remindly";
+export const APP_NAME = "Qorvena";
 
 const directAppsScriptUrl = import.meta.env.VITE_APPS_SCRIPT_URL || "";
 const apiEndpoint = directAppsScriptUrl || "/api/apps-script";

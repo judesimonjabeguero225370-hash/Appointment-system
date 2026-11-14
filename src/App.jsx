@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { APP_NAME, apiCall, isConfigured } from "./api";
+import Brand from "./Brand";
+import About from "./About";
 
 /* ───────── helpers ───────── */
 
@@ -46,12 +48,12 @@ function reminderChip(a) {
   return { text: `Email ${reminderLabel(a.remindBefore).toLowerCase()}`, tone: "info" };
 }
 
-const SESSION_KEY = "remindly-session";
+const SESSION_KEY = "qorvena-session";
 const readSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } };
 const saveSession = (session, remember) => { try { const store = remember ? localStorage : sessionStorage; (remember ? sessionStorage : localStorage).removeItem(SESSION_KEY); store.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* storage blocked */ } };
 const clearSession = () => { try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } };
-const lastEmail = () => { try { return localStorage.getItem("remindly-email") || ""; } catch { return ""; } };
-const saveEmail = (e) => { try { localStorage.setItem("remindly-email", e); } catch { /* ignore */ } };
+const lastEmail = () => { try { return localStorage.getItem("qorvena-email") || ""; } catch { return ""; } };
+const saveEmail = (e) => { try { localStorage.setItem("qorvena-email", e); } catch { /* ignore */ } };
 
 const demoUser = { id: "demo", fullName: "Demo User", email: "you@example.com" };
 const demoAppointments = () => [
@@ -62,7 +64,6 @@ const demoAppointments = () => [
 
 /* ───────── small pieces ───────── */
 
-function Brand() { return <div className="brand"><span className="brand-mark">🔔</span><strong>{APP_NAME}</strong></div>; }
 
 function Toast({ toast, onClose }) {
   useEffect(() => { if (!toast) return; const id = setTimeout(onClose, 5000); return () => clearTimeout(id); }, [toast]);
@@ -77,7 +78,7 @@ function PasswordField({ label, value, onChange, autoComplete, placeholder }) {
 
 /* ───────── sign in / sign up / reset ───────── */
 
-function AuthScreen({ onAuth }) {
+function AuthScreen({ onAuth, onAbout }) {
   const [mode, setMode] = useState("signin");           // signin | signup | recovery
   const [step, setStep] = useState(1);                  // recovery: 1 = ask for code, 2 = enter code
   const [name, setName] = useState("");
@@ -115,8 +116,8 @@ function AuthScreen({ onAuth }) {
       <div className="auth-body" key={mode + step}>
         <h1>{title}</h1><p className="muted">{intro}</p>
         <form onSubmit={submit}>
-          {mode === "signup" && <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Juan Dela Cruz" required autoFocus autoComplete="name" /></label>}
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="JuanDelaCruz@example.com" required autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" /></label>
+          {mode === "signup" && <label>Your name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Elena Rodriguez" required autoFocus autoComplete="name" /></label>}
+          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" /></label>
           {mode === "recovery" && step === 2 && <label>6-digit code<input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="123456" required autoFocus autoComplete="one-time-code" className="code-input" /></label>}
           {(mode !== "recovery" || step === 2) && <PasswordField label={mode === "recovery" ? "New password" : "Password"} value={password} onChange={setPassword} placeholder={mode === "signin" ? "Your password" : "At least 8 characters"} autoComplete={mode === "signin" ? "current-password" : "new-password"} />}
           {mode !== "recovery" && <label className="check"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span className="check-box" />Keep me signed in</label>}
@@ -126,9 +127,10 @@ function AuthScreen({ onAuth }) {
         </form>
         {mode === "signin" && <button className="link center" onClick={() => go("recovery")}>Forgot your password?</button>}
         {mode === "recovery" && <button className="link center" onClick={() => go("signin")}>← Back to sign in</button>}
+        <button className="about-link" onClick={onAbout}>✦ About {APP_NAME} &amp; the team</button>
       </div>
     </div>
-    <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a reminder just before it starts.</p><ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul></div>
+    <div className="auth-side"><h2>Never miss<br />an appointment.</h2><p>Add it once. We'll email you a confirmation now and a reminder just before it starts.</p><ul><li style={{ "--i": 0 }}>📅 Pick the date and time</li><li style={{ "--i": 1 }}>📧 Get an email confirmation</li><li style={{ "--i": 2 }}>🔔 Get reminded on time</li></ul><button className="about-link about-link-side" onClick={onAbout}>Meet the creators →</button></div>
   </div>;
 }
 
@@ -180,7 +182,9 @@ export default function App() {
   const [leavingId, setLeavingId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const [page, setPage] = useState(() => (typeof location !== "undefined" && location.hash === "#about" ? "about" : "home"));
   const toastId = useRef(0);
+  const goPage = (next) => { setPage(next); try { history.replaceState(null, "", next === "about" ? "#about" : location.pathname + location.search); } catch { /* ignore */ } window.scrollTo({ top: 0 }); };
 
   const notify = (message, type = "success") => setToast({ message, type, id: ++toastId.current });
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id); }, []);
@@ -237,14 +241,15 @@ export default function App() {
   const markDone = (a) => withExit(a.id, async () => { try { await remote("updateAppointment", { ...a, status: "done" }); setAppointments((l) => l.map((x) => x.id === a.id ? { ...x, status: "done" } : x)); notify("Nice — marked as done."); } catch (e) { notify(e.message, "error"); } });
   const remove = (a) => { setConfirmId(null); withExit(a.id, async () => { try { await remote("deleteAppointment", { id: a.id }); setAppointments((l) => l.filter((x) => x.id !== a.id)); notify("Appointment deleted."); } catch (e) { notify(e.message, "error"); } }); };
 
-  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} />;
+  if (page === "about") return <About onBack={() => goPage("home")} backLabel={isConfigured && !session ? "Back to sign in" : "Back to my appointments"} />;
+  if (isConfigured && !session) return <AuthScreen onAuth={handleAuth} onAbout={() => goPage("about")} />;
 
   const list = tab === "upcoming" ? upcoming : past;
   const groups = tab === "upcoming" ? ["Today", "Tomorrow", "This week", "Later"].map((g) => [g, list.filter((a) => groupOf(a) === g)]).filter(([, items]) => items.length) : [["", list]];
   let counter = 0;
 
   return <div className="app">
-    <header className="topbar"><Brand /><div className="user"><span className="avatar">{initials(session.user.fullName)}</span><span className="user-name">{session.user.fullName}</span>{isConfigured && <button className="link" onClick={signOut}>Sign out</button>}</div></header>
+    <header className="topbar"><Brand /><div className="user"><button className="link nav-link" onClick={() => goPage("about")}>About</button><span className="avatar">{initials(session.user.fullName)}</span><span className="user-name">{session.user.fullName}</span>{isConfigured && <button className="link" onClick={signOut}>Sign out</button>}</div></header>
     {!isConfigured && <div className="demo-banner">Demo mode — connect the backend to save appointments and send emails.</div>}
     <main className="content">
       <section className="hero"><div><p className="muted">{greeting}, {session.user.fullName.split(" ")[0]} 👋</p>
@@ -257,6 +262,7 @@ export default function App() {
         : !list.length ? <div className="empty" key={tab}><div className="empty-bell">🔔</div><h3>{tab === "upcoming" ? "You're all clear" : "No past appointments yet"}</h3><p className="muted">{tab === "upcoming" ? "Tap “New appointment” to add one — we'll remind you by email." : "Finished and missed appointments show up here."}</p>{tab === "upcoming" && <button className="btn btn-primary" onClick={openNew}>Add your first appointment</button>}</div>
         : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <AppointmentCard key={a.id} a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} />)}</div>)}</div>}
     </main>
+    <footer className="app-foot"><span>{APP_NAME} — appointments, organized.</span><button className="link" onClick={() => goPage("about")}>About the name &amp; creators</button></footer>
     <button className="fab" onClick={openNew} aria-label="New appointment">+</button>
     {modal && form && <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && setModal(false)}><div className="modal" role="dialog" aria-modal="true" aria-label={form.id ? "Edit appointment" : "New appointment"}><div className="modal-head"><h2>{form.id ? "Edit appointment" : "New appointment"}</h2><button className="icon-btn" onClick={() => setModal(false)} aria-label="Close">×</button></div><AppointmentForm form={form} setForm={setForm} saving={saving} onSubmit={save} onClose={() => setModal(false)} email={session.user.email} /></div></div>}
     <Toast toast={toast} onClose={() => setToast(null)} />
