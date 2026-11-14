@@ -25,6 +25,7 @@ const HEADERS = {
 
 const SESSION_HOURS = 24 * 14;          // stay signed in for 14 days
 const ADMIN_SESSION_HOURS = 8;          // admins are signed out after 8 hours
+const DEFAULT_ADMIN = { username: "admin", password: "admin", name: "Administrator" };   // default admin login (username: admin / password: admin)
 const STATUSES = ["upcoming", "done"];
 const REMINDER_CHECK_MINUTES = 5;       // how often reminders are checked (1, 5, 10, 15 or 30)
 
@@ -40,7 +41,8 @@ function setup() {
     if (name === "Appointments") sheet.getRange(2, 4, sheet.getMaxRows() - 1, 2).setNumberFormat("@"); // keep date/time as plain text
   });
   setupReminders();
-  return "Qorvena is ready: sheets created and the reminder timer is running. Now deploy the Web app.";
+  ensureDefaultAdmin_();
+  return "Qorvena is ready: sheets created, the reminder timer is running and the default admin account exists (username: admin / password: admin). Now deploy the Web app.";
 }
 
 /** Installs (or re-installs) the timer that sends reminder emails. */
@@ -199,38 +201,55 @@ function verifyPassword_(password, stored) {
 /* ───────────── admin portal (separate sign-in, separate Admins sheet) ───────────── */
 
 /**
- * ONE-TIME: create (or reset) the administrator account.
- *  1. Project Settings (gear icon) > Script properties > add  ADMIN_EMAIL  and  ADMIN_PASSWORD (10+ characters), optional ADMIN_NAME.
- *  2. Run  createAdmin()  . The password is stored hashed and ADMIN_PASSWORD is deleted from the properties straight away.
- *  3. Sign in on your site at  /#admin .   Run it again any time to change the admin password.
+ * Automatically adds the default admin account (username: admin / password: admin) when no admin exists yet.
+ * It runs by itself from setup() and on the first admin sign-in attempt, so there is nothing to configure.
+ * It never touches an existing admin, so changing the password later is safe.
+ */
+function ensureDefaultAdmin_() {
+  const spreadsheet = getDatabase_();
+  let sheet = spreadsheet.getSheetByName(SHEETS.admins);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(SHEETS.admins);
+    const headers = HEADERS.Admins;
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground("#2f6f63").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+  if (readRecords_(SHEETS.admins).length) return false;
+  const now = new Date().toISOString();
+  appendRecord_(SHEETS.admins, { id: makeId_("ADM"), fullName: DEFAULT_ADMIN.name, email: DEFAULT_ADMIN.username, passwordHash: hashPassword_(DEFAULT_ADMIN.password), active: true, createdAt: now, updatedAt: now });
+  return true;
+}
+
+/**
+ * Create (or reset) the default admin. Run it any time to put the login back to  admin / admin.
+ * Optional: set Script Properties ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME first to use different credentials instead.
  */
 function createAdmin() {
   if (!getDatabase_().getSheetByName(SHEETS.admins)) setup();
   const props = PropertiesService.getScriptProperties();
-  const email = clean_(props.getProperty("ADMIN_EMAIL")).toLowerCase();
-  const password = clean_(props.getProperty("ADMIN_PASSWORD"));
-  const name = clean_(props.getProperty("ADMIN_NAME")) || "Administrator";
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Add the Script Property ADMIN_EMAIL (Project Settings > Script properties), then run createAdmin() again.");
-  if (password.length < 10) throw new Error("Add the Script Property ADMIN_PASSWORD (at least 10 characters), then run createAdmin() again.");
+  const username = (clean_(props.getProperty("ADMIN_EMAIL")) || DEFAULT_ADMIN.username).toLowerCase();
+  const password = clean_(props.getProperty("ADMIN_PASSWORD")) || DEFAULT_ADMIN.password;
+  const name = clean_(props.getProperty("ADMIN_NAME")) || DEFAULT_ADMIN.name;
   const now = new Date().toISOString();
-  const existing = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === email; });
+  const existing = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === username; });
   if (existing) { existing.fullName = name; existing.passwordHash = hashPassword_(password); existing.active = true; existing.updatedAt = now; updateRecord_(SHEETS.admins, existing); }
-  else appendRecord_(SHEETS.admins, { id: makeId_("ADM"), fullName: name, email: email, passwordHash: hashPassword_(password), active: true, createdAt: now, updatedAt: now });
+  else appendRecord_(SHEETS.admins, { id: makeId_("ADM"), fullName: name, email: username, passwordHash: hashPassword_(password), active: true, createdAt: now, updatedAt: now });
   props.deleteProperty("ADMIN_PASSWORD");
-  return "Admin ready: " + email + ". ADMIN_PASSWORD was removed from the script properties. Sign in at your-website/#admin";
+  return "Admin ready. Username: " + username + (password === DEFAULT_ADMIN.password && username === DEFAULT_ADMIN.username ? " / Password: admin" : "") + ". Sign in at your-website/#admin";
 }
 
 function adminLogin_(input) {
   const email = clean_(input.email).toLowerCase();
   const password = clean_(input.password);
-  if (!email || !password) throw new Error("Please enter your admin email and password.");
+  if (!email || !password) throw new Error("Please enter your admin username and password.");
+  ensureDefaultAdmin_();   // adds admin / admin automatically if no admin account exists yet
   const cache = CacheService.getScriptCache();
   const key = "adminfail:" + email;
   if (Number(cache.get(key) || 0) >= 5) throw new Error("Too many attempts. Please wait 10 minutes and try again.");
   const admin = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === email && a.active; });
   if (!admin || !verifyPassword_(password, admin.passwordHash)) {
     cache.put(key, String(Number(cache.get(key) || 0) + 1), 600);
-    throw new Error("Incorrect admin email or password.");
+    throw new Error("Incorrect admin username or password.");
   }
   cache.remove(key);
   purgeExpired_(SHEETS.sessions, 2);
