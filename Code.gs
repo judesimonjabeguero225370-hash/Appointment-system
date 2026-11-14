@@ -677,3 +677,4 @@ function makeId_(prefix) { return prefix + "-" + Utilities.getUuid().split("-")[
 function clean_(v) { return v === undefined || v === null ? "" : String(v).trim(); }
 function esc_(v) { return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function json_(payload) { return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON); }
+
