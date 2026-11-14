@@ -1,0 +1,28 @@
+# Qorvena
+
+> Qorvena is an appointment management web app. People create an account, save their appointments with a date and time, get an email confirmation when an appointment is booked, and receive an email reminder before it starts.
+
+Qorvena works in any modern browser on phones, tablets and computers, in light or dark mode. Each account has its own private list of appointments.
+
+## What Qorvena does
+- Save an appointment with a title, date, time and optional notes.
+- Send an email confirmation as soon as an appointment is booked.
+- Send an email reminder before the appointment starts; the person chooses how long before.
+- Include a calendar file with appointment emails.
+- Let people reset a forgotten password with a code sent by email.
+
+## How it works
+1. Create an account with an email address and password.
+2. Add an appointment: pick the date and time and choose when to be reminded.
+3. Receive a confirmation email now and a reminder email just before it starts.
+
+## About the name
+QORVENA is an original coined name inspired by the Latin word "Vena", meaning "vein". It symbolizes the continuous flow of information and coordination within the system: like veins connecting parts of the body, Qorvena connects appointment requests, scheduling processes and automated notifications in one centralized platform.
+
+## The team
+Project Leader: Reven P. Vinzon. Team members: Jude Simon D. Jabeguero, Jorie F. Moreño Jr., John Federick J. Medina, Rovic A. Caraan. The team page is at __SITE_URL__/#team
+
+## Links
+- [Qorvena home](__SITE_URL__/): sign in or create an account
+- [About Qorvena and the meaning of the name](__SITE_URL__/#about)
+- [Meet the team](__SITE_URL__/#team)

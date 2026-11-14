@@ -7,7 +7,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#2f6f63" />
-    <meta name="description" content="Qorvena – save your appointments and get an email reminder before they happen." />
+    <meta name="description" content="Qorvena is an appointment management web app. Save your appointments, get an email confirmation when you book, and receive an email reminder before they start." />
+    <meta name="application-name" content="Qorvena" />
+    <meta name="apple-mobile-web-app-title" content="Qorvena" />
+    <meta name="author" content="Qorvena team" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="canonical" href="__SITE_URL__/" />
+    <link rel="alternate" hreflang="en" href="__SITE_URL__/" />
+    <link rel="alternate" hreflang="x-default" href="__SITE_URL__/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&display=swap" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
@@ -17,9 +29,10 @@
 
     <!-- Social sharing (Facebook, Messenger, WhatsApp, LinkedIn, X, Discord, Slack...) -->
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Qorvena" />
-    <meta property="og:title" content="Qorvena · Never miss an appointment" />
-    <meta property="og:description" content="Save your appointments and get an email reminder before they happen." />
+    <meta property="og:title" content="Qorvena · Appointment Management &amp; Email Reminders" />
+    <meta property="og:description" content="Never miss an appointment. Save it once, get an email confirmation now and a reminder just before it starts." />
     <meta property="og:url" content="__SITE_URL__/" />
     <meta property="og:image" content="__SITE_URL__/og-image.png" />
     <meta property="og:image:type" content="image/png" />
@@ -27,16 +40,31 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Qorvena: never miss an appointment. Save appointments and get an email reminder before they happen." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Qorvena · Never miss an appointment" />
-    <meta name="twitter:description" content="Save your appointments and get an email reminder before they happen." />
+    <meta name="twitter:title" content="Qorvena · Appointment Management &amp; Email Reminders" />
+    <meta name="twitter:description" content="Never miss an appointment. Save it once, get an email confirmation now and a reminder just before it starts." />
     <meta name="twitter:image" content="__SITE_URL__/og-image.png" />
     <script>try{var t=localStorage.getItem("qorvena-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";document.documentElement.dataset.theme=t==="dark"?"dark":"light"}catch(e){}</script>
-    <title>Qorvena · Appointment management</title>
+    <!--SEO_JSON_LD-->
+    <title>Qorvena · Appointment Management &amp; Email Reminders</title>
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5LVXV7RX" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
+    <noscript>
+      <main style="max-width:640px;margin:0 auto;padding:32px 20px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.6;color:#1f2f2c">
+        <h1>Qorvena: never miss an appointment</h1>
+        <p>Qorvena is an appointment management web app. Add an appointment once and get an email confirmation now and a friendly reminder just before it starts.</p>
+        <ul>
+          <li>Pick the date and time</li>
+          <li>Get an email confirmation</li>
+          <li>Get reminded on time</li>
+        </ul>
+        <h2>What QORVENA stands for</h2>
+        <p>QORVENA is an original coined name inspired by the Latin word Vena, meaning &ldquo;vein.&rdquo; It symbolizes the continuous flow of information and coordination within the system. Just as veins connect different parts of the body, QORVENA connects appointment requests, scheduling processes, and automated notifications in one centralized platform, making appointment management more organized, efficient, and convenient.</p>
+        <p>Please turn on JavaScript to sign in and manage your appointments.</p>
+      </main>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

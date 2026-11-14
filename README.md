@@ -54,3 +54,7 @@ To change a name, role, photo or Facebook link, edit the `TEAM` list at the top 
 ## Favicon & social share banner
 
 Icons live in `public/` (`favicon.svg`, `favicon.ico`, `favicon-16/32.png`, `apple-touch-icon.png`, `icon-192/512.png`, `icon-maskable-512.png`, `site.webmanifest`) and the share banner is `public/og-image.png` (1200×630; `og-image.jpg` is a lighter copy). The tags are in `index.html`. Social sites need the full address, so set `VITE_SITE_URL` (for example `https://your-site.vercel.app`) in Vercel; if you deploy on Vercel it is picked up automatically. After deploying, refresh the cached preview with the Facebook Sharing Debugger / LinkedIn Post Inspector.
+
+## SEO, answer-engine (AEO) and generative-engine (GEO) setup
+
+Nothing visible on the site changed. Added behind the scenes: a clearer title and description, canonical + language tags, `robots` directives, JSON-LD structured data (WebSite, Organization, WebApplication; `seo/structured-data.js`), a plain-text fallback in `index.html` for crawlers that do not run JavaScript, `public/robots.txt` (search and AI crawlers allowed), `public/sitemap.xml` and `public/llms.txt`. `seo/vite-plugin.js` fills in your real address at build time from `VITE_SITE_URL` (automatic on Vercel). Edit the wording in `llms.txt` and `structured-data.js` if the product changes, since AI engines quote them. After deploying, submit `/sitemap.xml` in Google Search Console and Bing Webmaster Tools.

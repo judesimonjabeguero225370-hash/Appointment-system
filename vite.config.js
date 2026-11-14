@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import seoPlugin from "./seo/vite-plugin.js";
 
-// Social-share tags need an absolute address. Set VITE_SITE_URL (e.g. https://qorvena.vercel.app) in Vercel;
+// Social-share, canonical and sitemap tags need an absolute address. Set VITE_SITE_URL (e.g. https://qorvena.vercel.app) in Vercel;
 // on Vercel it falls back to the project's production domain automatically.
 function siteUrl(mode) {
   const env = loadEnv(mode, process.cwd(), "");
@@ -10,10 +11,7 @@ function siteUrl(mode) {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [
-    react(),
-    { name: "site-url", transformIndexHtml: (html) => html.replaceAll("__SITE_URL__", siteUrl(mode)) }
-  ],
+  plugins: [react(), seoPlugin(siteUrl(mode))],
   server: {
     host: "0.0.0.0",
     port: 3000,
