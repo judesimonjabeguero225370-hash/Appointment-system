@@ -4,6 +4,7 @@ import Brand, { Logo } from "./Brand";
 import About from "./About";
 import Admin from "./Admin";
 import ThemeToggle from "./Theme";
+import ErrorBoundary from "./ErrorBoundary";
 import { StatTiles, MiniCalendar, QuickBook, ReminderCard, Tips } from "./Dash";
 
 /* ───────── helpers ───────── */
@@ -20,11 +21,13 @@ const REMINDERS = [
 const pad = (n) => String(n).padStart(2, "0");
 const localIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return localIso(d); };
-const startOf = (a) => new Date(`${a.date}T${a.time}:00`);
+const normDate = (v) => { const s = String(v ?? "").trim(), m = s.match(/^\d{4}-\d{2}-\d{2}/); if (m) return m[0]; const d = new Date(s); return isNaN(d) ? "" : localIso(d); };
+const normTime = (v) => { const m = String(v ?? "").match(/(\d{1,2}):(\d{2})/); return m ? `${pad(m[1])}:${m[2]}` : "00:00"; };
+const startOf = (a) => new Date(`${normDate(a.date)}T${normTime(a.time)}:00`);
 const timeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } };
 const roundedNextHour = () => { const d = new Date(Date.now() + 3600000); return `${pad(d.getHours())}:00`; };
-const fmtTime = (a) => new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(startOf(a));
-const fmtLong = (a) => new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(startOf(a));
+const fmtTime = (a) => { const d = startOf(a); return isNaN(d) ? "Time not set" : new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(d); };
+const fmtLong = (a) => { const d = startOf(a); return isNaN(d) ? "Date not set" : new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(d); };
 const initials = (name = "") => name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
 const reminderLabel = (v) => REMINDERS.find((r) => r.value === Number(v))?.label || "";
 
@@ -195,7 +198,7 @@ function AppointmentCard({ a, index, now, leaving, confirming, onDone, onEdit, o
   const d = startOf(a);
   const rel = isPast ? "" : relative(a, now);
   return <article className={`card spot ${leaving ? "leaving" : ""} ${a.status === "done" ? "is-done" : ""}`} style={{ "--i": index }}>
-    <div className="date-badge"><small>{new Intl.DateTimeFormat("en", { month: "short" }).format(d)}</small><strong>{d.getDate()}</strong></div>
+    <div className="date-badge"><small>{isNaN(d) ? "—" : new Intl.DateTimeFormat("en", { month: "short" }).format(d)}</small><strong>{isNaN(d) ? "–" : d.getDate()}</strong></div>
     <div className="card-main"><h3>{a.title}</h3><p className="muted">{fmtLong(a).split(",")[0]} · {fmtTime(a)}{rel && <span className="rel"> · {rel}</span>}</p>
       {a.notes && <p className="notes">{a.notes}</p>}
       <div className="chips">{isPast ? <span className={`chip ${a.status === "done" ? "chip-ok" : "chip-muted"}`}>{a.status === "done" ? "✓ Done" : "Missed"}</span> : <span className={`chip chip-${chip.tone}`}>{chip.tone === "ok" ? "✓ " : "📧 "}{chip.text}</span>}</div></div>
@@ -322,7 +325,7 @@ export default function App() {
 
       {loading ? <div className="skeletons">{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ "--i": i }} />)}</div>
         : !list.length ? <div className="empty" key={tab}><div className="empty-bell">🔔</div><h3>{tab === "upcoming" ? "You're all clear" : "No past appointments yet"}</h3><p className="muted">{tab === "upcoming" ? "Tap “New appointment” to add one — we'll remind you by email." : "Finished and missed appointments show up here."}</p>{tab === "upcoming" && <button className="btn btn-primary" onClick={openNew}>Add your first appointment</button>}</div>
-        : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <AppointmentCard key={a.id} a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} />)}</div>)}</div>}
+        : <div className="list" key={tab}>{groups.map(([label, items]) => <div className="group" key={label || "all"}>{label && <h2 className="group-title">{label}</h2>}{items.map((a) => <ErrorBoundary compact key={a.id}><AppointmentCard a={a} index={counter++} now={now} isPast={tab === "past"} leaving={leavingId === a.id} confirming={confirmId === a.id} onDone={markDone} onEdit={openEdit} onAskDelete={setConfirmId} onDelete={remove} /></ErrorBoundary>)}</div>)}</div>}
       <Tips />
       </div>
       <aside className="dash-side" aria-label="Calendar and shortcuts">
