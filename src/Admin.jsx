@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { APP_NAME, apiCall, isConfigured } from "./api";
 import { Logo } from "./Brand";
 import ThemeToggle from "./Theme";
+import Loader from "./Loader";
 import "./admin.css";
 
 /* ───────── session (kept only for this browser tab, so closing the tab signs the admin out) ───────── */
@@ -25,6 +26,7 @@ const reminderText = (a) => Number(a.remindBefore) < 0 ? "Off" : /^\d{4}-/.test(
 /* ───────── demo back end (only used when the site isn't connected to Apps Script) ───────── */
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let demo = null;
+let demoAdminPass = "admin", demoNeedsChange = true;
 function makeDemo() {
   const names = ["Maria Santos", "Carlo Reyes", "Anna Dela Cruz", "Jude Jabeguero", "Liza Ramos", "Paolo Mendoza", "Grace Tan", "Ken Villanueva"];
   const users = names.map((fullName, i) => ({ id: `USR-${i + 1}`, fullName, email: `${fullName.toLowerCase().replace(/[^a-z]+/g, ".")}@mail.com`, active: i !== 6, createdAt: new Date(Date.now() - (i * 2.3 + 0.5) * 86400000).toISOString(), appointments: 0 }));
@@ -43,8 +45,12 @@ async function adminApi(action, data, token) {
   const copy = (x) => JSON.parse(JSON.stringify(x));
   switch (action) {
     case "adminLogin":
-      if (data.email === "admin" && data.password === "admin") return { token: "ADM-demo", expiresAt: "", admin: { id: "ADM-1", fullName: "Demo Admin", email: data.email } };
+      if (data.email === "admin" && data.password === demoAdminPass) return { token: "ADM-demo", expiresAt: "", admin: { id: "ADM-1", fullName: "Demo Admin", email: data.email }, mustChangePassword: demoNeedsChange };
       throw new Error("Incorrect admin username or password.");
+    case "adminChangePassword":
+      if (data.currentPassword !== demoAdminPass) throw new Error("Your current password isn't right.");
+      demoAdminPass = data.newPassword; demoNeedsChange = false;
+      return { token: "ADM-demo", expiresAt: "", admin: { id: "ADM-1", fullName: "Demo Admin", email: "admin" }, message: "Password changed." };
     case "adminLogout": return { status: "ok" };
     case "adminOverview": return { admin: { id: "ADM-1", fullName: "Demo Admin", email: "admin" }, ...copy(demo) };
     case "adminSetUserActive": demo.users.find((u) => u.id === data.id).active = !!data.active; return { id: data.id, active: !!data.active };
@@ -91,10 +97,11 @@ function AdminLogin({ onDone, onExit }) {
   const [error, setError] = useState("");
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError("");
-    try { const r = await adminApi("adminLogin", { email: email.trim().toLowerCase(), password }); const s = { token: r.token, admin: r.admin }; saveSession(s); onDone(s); }
+    try { const r = await adminApi("adminLogin", { email: email.trim().toLowerCase(), password }); const s = { token: r.token, admin: r.admin, mustChange: !!r.mustChangePassword }; saveSession(s); onDone(s); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   };
   return <div className="al-shell">
+    {busy && <Loader text="Signing you in to admin…" />}
     <div className="al-orb al-orb-a" /><div className="al-orb al-orb-b" />
     <div className="al-top"><ThemeToggle /></div>
     <form className="al-card" onSubmit={submit}>
@@ -250,11 +257,57 @@ function Dashboard({ session, onSignOut, onExit }) {
   </div>;
 }
 
+/* ───────── first sign-in: choose a new password ───────── */
+function AdminSetPassword({ session, onDone, onSignOut }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const problem = next.length < 10 ? "Use at least 10 characters." : next === current ? "Choose a password different from the old one." : next !== again ? "The two new passwords don't match." : "";
+  const submit = async (e) => {
+    e.preventDefault(); if (problem) { setError(problem); return; }
+    setBusy(true); setError("");
+    try { const r = await adminApi("adminChangePassword", { currentPassword: current, newPassword: next }, session.token); const s = { token: r.token, admin: r.admin, mustChange: false }; saveSession(s); onDone(s); }
+    catch (err) { setError(err.message); if (/session|sign in|admin access/i.test(err.message)) onSignOut(err.message); } finally { setBusy(false); }
+  };
+  return <div className="al-shell">
+    {busy && <Loader text="Saving your new password…" />}
+    <div className="al-orb al-orb-a" /><div className="al-orb al-orb-b" />
+    <div className="al-top"><ThemeToggle /></div>
+    <form className="al-card" onSubmit={submit}>
+      <div className="al-badge"><Logo size={46} /><span className="al-shield"><Icon name="shield" /></span></div>
+      <h1>Choose a new password</h1>
+      <p className="muted">You signed in with the starting password. For safety, pick your own before opening the admin portal.</p>
+      <div className="ff ff-pass"><input id="ap-cur" type={show ? "text" : "password"} placeholder=" " required autoFocus autoComplete="current-password" maxLength={128} value={current} onChange={(e) => setCurrent(e.target.value)} /><label htmlFor="ap-cur">Current password</label></div>
+      <div className="ff ff-pass"><input id="ap-new" type={show ? "text" : "password"} placeholder=" " required autoComplete="new-password" maxLength={128} value={next} onChange={(e) => setNext(e.target.value)} /><label htmlFor="ap-new">New password (10+ characters)</label></div>
+      <div className="ff ff-pass"><input id="ap-again" type={show ? "text" : "password"} placeholder=" " required autoComplete="new-password" maxLength={128} value={again} onChange={(e) => setAgain(e.target.value)} /><label htmlFor="ap-again">Repeat new password</label></div>
+      <label className="check"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /><span className="check-box" />Show passwords</label>
+      {error && <div className="alert alert-error" role="alert">{error}</div>}
+      <button className="btn btn-primary btn-block go" disabled={busy || !current || !next || !again}>{busy ? <span className="spinner" /> : null}<span>Save and continue</span>{!busy && <span className="go-arrow" aria-hidden="true">→</span>}</button>
+      <button type="button" className="foot-btn al-back" onClick={() => onSignOut("")}><span className="ico" aria-hidden="true">←</span>Sign out</button>
+    </form>
+  </div>;
+}
+
+const IDLE_MINUTES = 15;   // admins are signed out after this long without activity
+
 export default function Admin({ onExit }) {
   const [session, setSession] = useState(() => (isConfigured ? readSession() : null));
   const [notice, setNotice] = useState("");
   const signOut = (message) => { if (session?.token) adminApi("adminLogout", {}, session.token).catch(() => {}); clearSession(); setSession(null); setNotice(message || ""); };
-  useEffect(() => { document.title = `Admin · ${APP_NAME}`; return () => { document.title = `${APP_NAME} · Appointment management`; }; }, []);
+  useEffect(() => { document.title = `Admin · ${APP_NAME}`; return () => { document.title = `${APP_NAME} · Appointment Management & Email Reminders`; }; }, []);
+  useEffect(() => {
+    if (!session) return undefined;
+    let timer;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => signOut(`You were signed out after ${IDLE_MINUTES} minutes without activity.`), IDLE_MINUTES * 60000); };
+    const events = ["pointerdown", "keydown", "scroll", "touchstart"];
+    events.forEach((e) => window.addEventListener(e, arm, { passive: true }));
+    arm();
+    return () => { clearTimeout(timer); events.forEach((e) => window.removeEventListener(e, arm)); };
+  }, [session?.token]);
   if (!session) return <>{notice && <div className="al-notice" role="alert">{notice}</div>}<AdminLogin onDone={(s) => { setNotice(""); setSession(s); }} onExit={onExit} /></>;
+  if (session.mustChange) return <AdminSetPassword session={session} onDone={(s) => setSession(s)} onSignOut={signOut} />;
   return <Dashboard session={session} onSignOut={signOut} onExit={onExit} />;
 }

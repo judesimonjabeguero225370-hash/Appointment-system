@@ -27,6 +27,10 @@ const SESSION_HOURS = 24 * 14;          // stay signed in for 14 days
 const ADMIN_SESSION_HOURS = 8;          // admins are signed out after 8 hours
 const DEFAULT_ADMIN = { username: "admin", password: "admin", name: "Administrator" };   // default admin login (username: admin / password: admin)
 const STATUSES = ["upcoming", "done"];
+const FORCE_ADMIN_PASSWORD_CHANGE = true;   // the default admin / admin login must pick a new password on first sign-in (set false only for private testing)
+const PASSWORD_ROUNDS = 1000;               // hashing rounds for new passwords (raise for more safety, lower if sign-in feels slow)
+const LIMITS = { name: 80, email: 254, password: 128, title: 120, notes: 1000, appointmentsPerUser: 300 };
+const COMMON_PASSWORDS = ["password", "12345678", "123456789", "1234567890", "qwerty123", "qwertyuiop", "iloveyou", "password1", "11111111", "00000000", "admin123", "letmein123", "abc12345"];
 const REMINDER_CHECK_MINUTES = 5;       // how often reminders are checked (1, 5, 10, 15 or 30)
 
 /* ───────────── setup ───────────── */
@@ -45,6 +49,18 @@ function setup() {
   return "Qorvena is ready: sheets created, the reminder timer is running and the default admin account exists (username: admin / password: admin). Now deploy the Web app.";
 }
 
+/**
+ * Run this once, then copy the key from the log into BOTH places:
+ *  1. Apps Script > Project Settings > Script Properties > API_KEY
+ *  2. Vercel > Settings > Environment Variables > APPS_SCRIPT_API_KEY   (then redeploy)
+ * After that, only your website can talk to this backend; anyone who finds the Apps Script link gets "Unauthorized request".
+ */
+function generateApiKey() {
+  const key = (Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, "");
+  console.log("Your new API key (keep it private):\n" + key);
+  return key;
+}
+
 /** Installs (or re-installs) the timer that sends reminder emails. */
 function setupReminders() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === "sendDueReminders") ScriptApp.deleteTrigger(t); });
@@ -57,13 +73,21 @@ function doGet() { return json_({ success: true, data: { status: "ok", service: 
 
 function doPost(event) {
   try {
-    const body = event && event.postData && event.postData.contents ? JSON.parse(event.postData.contents) : {};
+    const raw = event && event.postData && event.postData.contents ? event.postData.contents : "";
+    if (raw.length > 60000) throw userError_("That request is too large.");
+    const body = raw ? JSON.parse(raw) : {};
     authorize_(body.apiKey);
-    return json_({ success: true, data: handleAction_(body.action, body.data || {}) });
+    REQUEST_IP_ = clean_(body.ip).slice(0, 64);
+    return json_({ success: true, data: handleAction_(clean_(body.action), body.data && typeof body.data === "object" ? body.data : {}) });
   } catch (error) {
-    return json_({ success: false, error: error.message || String(error) });
+    if (error && error.isUser) return json_({ success: false, error: error.message });
+    console.error(error && error.stack ? error.stack : String(error));   // details stay in the Apps Script log, never in the reply
+    return json_({ success: false, error: "Something went wrong on our side. Please try again in a moment." });
   }
 }
+
+let REQUEST_IP_ = "";
+function userError_(message) { const e = new Error(message); e.isUser = true; return e; }
 
 function handleAction_(action, data) {
   switch (action) {
@@ -76,6 +100,7 @@ function handleAction_(action, data) {
     case "resetPassword": return resetPassword_(data);
     case "adminLogin": return adminLogin_(data);
     case "adminLogout": return logout_(data);
+    case "adminChangePassword": return adminChangePassword_(data);
     case "adminOverview": return adminOverview_(requireAdmin_(data));
     case "adminSetUserActive": return adminSetUserActive_(data, requireAdmin_(data));
     case "adminDeleteUser": return adminDeleteUser_(data, requireAdmin_(data));
@@ -86,24 +111,27 @@ function handleAction_(action, data) {
     case "createAppointment": return createAppointment_(data, requireUser_(data));
     case "updateAppointment": return updateAppointment_(data, requireUser_(data));
     case "deleteAppointment": return deleteAppointment_(data, requireUser_(data));
-    default: throw new Error("Unknown action: " + action);
+    default: throw userError_("Unknown action.");
   }
 }
 
 /* ───────────── accounts ───────────── */
 
 function register_(input) {
-  if (String(PropertiesService.getScriptProperties().getProperty("ALLOW_SIGNUP") || "true").toLowerCase() === "false") throw new Error("Sign-up is turned off.");
-  const fullName = clean_(input.fullName);
+  if (String(PropertiesService.getScriptProperties().getProperty("ALLOW_SIGNUP") || "true").toLowerCase() === "false") throw userError_("Sign-up is turned off.");
+  const fullName = cleanText_(input.fullName);
   const email = clean_(input.email).toLowerCase();
   const password = clean_(input.password);
-  if (!fullName) throw new Error("Please enter your name.");
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Please enter a valid email address.");
-  if (password.length < 8) throw new Error("Your password needs at least 8 characters.");
+  if (!fullName) throw userError_("Please enter your name.");
+  if (fullName.length > LIMITS.name) throw userError_("Your name is too long (" + LIMITS.name + " characters max).");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > LIMITS.email) throw userError_("Please enter a valid email address.");
+  checkPassword_(password, email, "Your password");
+  throttle_("reg-ip:" + REQUEST_IP_, 10, 3600, "Too many accounts were created from your network. Please try again later.");
+  throttleHit_("reg-ip:" + REQUEST_IP_, 3600);
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    if (readRecords_(SHEETS.users).some(function (u) { return String(u.email).toLowerCase() === email; })) throw new Error("An account with this email already exists. Try signing in instead.");
+    if (readRecords_(SHEETS.users).some(function (u) { return String(u.email).toLowerCase() === email; })) throw userError_("An account with this email already exists. Try signing in instead.");
     const now = new Date().toISOString();
     appendRecord_(SHEETS.users, { id: makeId_("USR"), fullName: fullName, email: email, passwordHash: hashPassword_(password), active: true, createdAt: now, updatedAt: now });
   } finally { lock.releaseLock(); }
@@ -111,30 +139,38 @@ function register_(input) {
 }
 
 function login_(input) {
-  const email = clean_(input.email).toLowerCase();
-  const password = clean_(input.password);
-  if (!email || !password) throw new Error("Please enter your email and password.");
+  const email = clean_(input.email).toLowerCase().slice(0, LIMITS.email);
+  const password = clean_(input.password).slice(0, LIMITS.password + 1);
+  if (!email || !password) throw userError_("Please enter your email and password.");
+  const ipKey = "login-ip:" + REQUEST_IP_, mailKey = "login:" + email;
+  throttle_(ipKey, 40, 600);
+  throttle_(mailKey, 6, 600, "Too many wrong attempts. Please wait 10 minutes, or use \"Forgot password?\".");
   const user = readRecords_(SHEETS.users).find(function (u) { return String(u.email).toLowerCase() === email && u.active; });
-  if (!user || !verifyPassword_(password, user.passwordHash)) throw new Error("That email and password don't match. Check them or create an account.");
+  if (!user || !verifyPassword_(password, user.passwordHash)) {
+    throttleHit_(ipKey, 600); throttleHit_(mailKey, 600);
+    throw userError_("That email and password don't match. Check them or create an account.");
+  }
+  throttleClear_(mailKey);
+  if (needsRehash_(user.passwordHash)) { user.passwordHash = hashPassword_(password); updateRecord_(SHEETS.users, user); }   // quietly upgrade older passwords
   purgeExpired_(SHEETS.sessions, 2);
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 3600 * 1000).toISOString();
-  appendRecord_(SHEETS.sessions, { token: token, userId: user.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
+  appendRecord_(SHEETS.sessions, { token: tokenHash_(token), userId: user.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
   return { token: token, expiresAt: expiresAt, user: safeUser_(user) };
 }
 
 function logout_(input) {
-  deleteRows_(SHEETS.sessions, 0, clean_(input.token));
+  deleteRows_(SHEETS.sessions, 0, tokenHash_(clean_(input.token)));
   return { status: "ok" };
 }
 
 function requireUser_(data) {
   const token = clean_(data.token);
-  if (!token) throw new Error("Please sign in to continue.");
-  const session = readRecords_(SHEETS.sessions).find(function (s) { return s.token === token; });
-  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) throw new Error("Your session has expired. Please sign in again.");
+  if (!token) throw userError_("Please sign in to continue.");
+  const session = readRecords_(SHEETS.sessions).find(function (s) { return safeEqual_(s.token, tokenHash_(token)); });
+  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) throw userError_("Your session has expired. Please sign in again.");
   const user = readRecords_(SHEETS.users).find(function (u) { return u.id === session.userId && u.active; });
-  if (!user) throw new Error("This account no longer exists.");
+  if (!user) throw userError_("This account no longer exists.");
   return safeUser_(user);
 }
 
@@ -145,7 +181,9 @@ const RESET_COOLDOWN_SECONDS = 45;   // minimum gap between two codes for the sa
 
 function requestPasswordReset_(input) {
   const email = clean_(input.email).toLowerCase();
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Please enter a valid email address.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw userError_("Please enter a valid email address.");
+  throttle_("reset-ip:" + REQUEST_IP_, 10, 3600, "Too many requests from your network. Please try again later.");
+  throttleHit_("reset-ip:" + REQUEST_IP_, 3600);
   const reply = { message: "If that email has an account, we've sent a 6-digit code to it. It usually arrives within a minute. Check your Spam or Promotions folder too." };
   const user = readRecords_(SHEETS.users).find(function (u) { return String(u.email).toLowerCase() === email && u.active; });
   if (!user) return reply;
@@ -154,9 +192,9 @@ function requestPasswordReset_(input) {
   const lastRequest = readRecords_(SHEETS.resets).filter(function (r) { return String(r.email).toLowerCase() === email; })[0];
   if (lastRequest && Date.now() - new Date(lastRequest.createdAt).getTime() < RESET_COOLDOWN_SECONDS * 1000) return reply;
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const code = secureCode_();
   deleteRows_(SHEETS.resets, 0, email);
-  appendRecord_(SHEETS.resets, { email: email, codeHash: hashPassword_(code), expiresAt: new Date(Date.now() + 15 * 60000).toISOString(), attempts: 0, createdAt: new Date().toISOString() });
+  appendRecord_(SHEETS.resets, { email: email, codeHash: hashLegacy_(code), expiresAt: new Date(Date.now() + 15 * 60000).toISOString(), attempts: 0, createdAt: new Date().toISOString() });
   const sent = sendEmail_(email, APP_NAME + " password reset code: " + code, resetEmail_(user, code), null, "Your " + APP_NAME + " password reset code is " + code + ". It works for 15 minutes. If you didn't ask for this, ignore this email.");
   if (!sent) deleteRows_(SHEETS.resets, 0, email);   // nothing was delivered, so let the person try again straight away
   return reply;
@@ -166,15 +204,15 @@ function resetPassword_(input) {
   const email = clean_(input.email).toLowerCase();
   const code = clean_(input.code);
   const password = clean_(input.password);
-  if (password.length < 8) throw new Error("Your new password needs at least 8 characters.");
+  checkPassword_(password, email, "Your new password");
   const sheet = getDatabase_().getSheetByName(SHEETS.resets);
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).toLowerCase() !== email) continue;
     const expired = new Date(rows[i][2]).getTime() <= Date.now();
     const attempts = Number(rows[i][3] || 0);
-    if (expired || attempts >= 5) { sheet.deleteRow(i + 1); throw new Error("That code has expired. Please request a new one."); }
-    if (hashPassword_(code, String(rows[i][1]).split("$")[0]) !== rows[i][1]) { sheet.getRange(i + 1, 4).setValue(attempts + 1); throw new Error("That code isn't right. Please check it and try again."); }
+    if (expired || attempts >= 5) { sheet.deleteRow(i + 1); throw userError_("That code has expired. Please request a new one."); }
+    if (!safeEqual_(hashLegacy_(code, String(rows[i][1]).split("$")[0]), rows[i][1])) { sheet.getRange(i + 1, 4).setValue(attempts + 1); throw userError_("That code isn't right. Please check it and try again."); }
     const user = readRecords_(SHEETS.users).find(function (u) { return String(u.email).toLowerCase() === email; });
     if (!user) break;
     user.passwordHash = hashPassword_(password);
@@ -184,18 +222,66 @@ function resetPassword_(input) {
     deleteRows_(SHEETS.sessions, 1, user.id);   // sign out every device
     return { message: "Password updated. You can sign in now." };
   }
-  throw new Error("That code isn't valid. Please request a new one.");
+  throw userError_("That code isn't valid. Please request a new one.");
 }
 
-function hashPassword_(password, salt) {
+/** Old format "salt$sha256". Still used for the 6-digit reset codes, and to recognise passwords saved before the upgrade. */
+function hashLegacy_(value, salt) {
   const actualSalt = salt || Utilities.getUuid();
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, actualSalt + password, Utilities.Charset.UTF_8);
-  return actualSalt + "$" + digest.map(function (b) { const v = b < 0 ? b + 256 : b; return (v < 16 ? "0" : "") + v.toString(16); }).join("");
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, actualSalt + value, Utilities.Charset.UTF_8);
+  return actualSalt + "$" + toHex_(digest);
+}
+
+/** Passwords: "v2$rounds$salt$hash" - salted and repeated many times so guessing is slow. */
+function hashPassword_(password, salt, rounds) {
+  const r = rounds || PASSWORD_ROUNDS, s = salt || (Utilities.getUuid() + Utilities.getUuid().replace(/-/g, ""));
+  const seed = Utilities.newBlob(s + password).getBytes();
+  let h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed);
+  for (let i = 1; i < r; i++) h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, h.concat(seed));
+  return "v2$" + r + "$" + s + "$" + toHex_(h);
+}
+
+function toHex_(bytes) { return bytes.map(function (b) { const v = b < 0 ? b + 256 : b; return (v < 16 ? "0" : "") + v.toString(16); }).join(""); }
+
+/** Compares without stopping at the first different character. */
+function safeEqual_(a, b) {
+  a = String(a); b = String(b);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
 }
 
 function verifyPassword_(password, stored) {
   const parts = clean_(stored).split("$");
-  return parts.length === 2 && hashPassword_(password, parts[0]) === stored;
+  if (parts[0] === "v2" && parts.length === 4) return safeEqual_(hashPassword_(password, parts[2], Number(parts[1])), stored);
+  return parts.length === 2 && safeEqual_(hashLegacy_(password, parts[0]), stored);   // saved before the upgrade
+}
+
+/** True when the stored hash should be re-saved in the newer format (done automatically at the next sign-in). */
+function needsRehash_(stored) { return String(stored).indexOf("v2$" + PASSWORD_ROUNDS + "$") !== 0; }
+
+/** A random 6-digit code from a secure source (Math.random is predictable). */
+function secureCode_() {
+  const hex = Utilities.getUuid().replace(/-/g, "").slice(0, 12);
+  return String(100000 + (parseInt(hex, 16) % 900000));
+}
+
+/** Session tokens are saved only as a hash, so a leaked sheet can't be used to sign in. */
+function tokenHash_(token) { return toHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, "qv-session:" + token, Utilities.Charset.UTF_8)); }
+
+/** Allows `max` tries per `seconds` for a key (per email, per address...). Returns quietly or throws. */
+function throttle_(key, max, seconds, message) {
+  const cache = CacheService.getScriptCache(), k = "t:" + key;
+  if (Number(cache.get(k) || 0) >= max) throw userError_(message || "Too many attempts. Please wait a few minutes and try again.");
+}
+function throttleHit_(key, seconds) { const cache = CacheService.getScriptCache(), k = "t:" + key; cache.put(k, String(Number(cache.get(k) || 0) + 1), seconds); }
+function throttleClear_(key) { CacheService.getScriptCache().remove("t:" + key); }
+
+/** The checks every password must pass. */
+function checkPassword_(password, email, label) {
+  if (password.length < 8) throw userError_((label || "Your password") + " needs at least 8 characters.");
+  if (password.length > LIMITS.password) throw userError_((label || "Your password") + " is too long (" + LIMITS.password + " characters max).");
+  if (COMMON_PASSWORDS.indexOf(password.toLowerCase()) !== -1 || (email && password.toLowerCase() === email)) throw userError_("That password is too easy to guess. Please choose a different one.");
 }
 
 /* ───────────── admin portal (separate sign-in, separate Admins sheet) ───────────── */
@@ -239,33 +325,57 @@ function createAdmin() {
 }
 
 function adminLogin_(input) {
-  const email = clean_(input.email).toLowerCase();
-  const password = clean_(input.password);
-  if (!email || !password) throw new Error("Please enter your admin username and password.");
+  const email = clean_(input.email).toLowerCase().slice(0, LIMITS.email);
+  const password = clean_(input.password).slice(0, LIMITS.password + 1);
+  if (!email || !password) throw userError_("Please enter your admin username and password.");
   ensureDefaultAdmin_();   // adds admin / admin automatically if no admin account exists yet
-  const cache = CacheService.getScriptCache();
-  const key = "adminfail:" + email;
-  if (Number(cache.get(key) || 0) >= 5) throw new Error("Too many attempts. Please wait 10 minutes and try again.");
+  const mailKey = "adminfail:" + email, ipKey = "adminfail-ip:" + REQUEST_IP_;
+  throttle_(mailKey, 5, 600, "Too many attempts. Please wait 10 minutes and try again.");
+  throttle_(ipKey, 20, 600, "Too many attempts. Please wait 10 minutes and try again.");
   const admin = readRecords_(SHEETS.admins).find(function (a) { return String(a.email).toLowerCase() === email && a.active; });
   if (!admin || !verifyPassword_(password, admin.passwordHash)) {
-    cache.put(key, String(Number(cache.get(key) || 0) + 1), 600);
-    throw new Error("Incorrect admin username or password.");
+    throttleHit_(mailKey, 600); throttleHit_(ipKey, 600);
+    throw userError_("Incorrect admin username or password.");
   }
-  cache.remove(key);
+  throttleClear_(mailKey);
+  if (needsRehash_(admin.passwordHash)) { admin.passwordHash = hashPassword_(password); updateRecord_(SHEETS.admins, admin); }
+  // Signing in with the factory password only opens a "choose a new password" session until it is changed.
+  const mustChange = FORCE_ADMIN_PASSWORD_CHANGE && password === DEFAULT_ADMIN.password;
   purgeExpired_(SHEETS.sessions, 2);
-  const token = "ADM-" + Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
-  const expiresAt = new Date(Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000).toISOString();
-  appendRecord_(SHEETS.sessions, { token: token, userId: admin.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
-  return { token: token, expiresAt: expiresAt, admin: safeUser_(admin) };
+  const token = (mustChange ? "ADM-TMP-" : "ADM-") + Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
+  const expiresAt = new Date(Date.now() + (mustChange ? 0.25 : ADMIN_SESSION_HOURS) * 3600 * 1000).toISOString();
+  appendRecord_(SHEETS.sessions, { token: tokenHash_(token), userId: admin.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
+  return { token: token, expiresAt: expiresAt, admin: safeUser_(admin), mustChangePassword: mustChange };
 }
 
-function requireAdmin_(data) {
+/** Lets a signed-in admin replace their password (required once when the factory admin / admin login is used). */
+function adminChangePassword_(input) {
+  const admin = requireAdmin_(input, true);
+  const current = clean_(input.currentPassword), next = clean_(input.newPassword);
+  throttle_("adminchange:" + admin.id, 5, 600, "Too many attempts. Please wait 10 minutes and try again.");
+  const record = readRecords_(SHEETS.admins).find(function (a) { return a.id === admin.id; });
+  if (!record || !verifyPassword_(current, record.passwordHash)) { throttleHit_("adminchange:" + admin.id, 600); throw userError_("Your current password isn't right."); }
+  checkPassword_(next, "", "The new password");
+  if (next.length < 10) throw userError_("Admin passwords need at least 10 characters.");
+  if (next === current || next.toLowerCase() === DEFAULT_ADMIN.password || next.toLowerCase() === String(record.email).toLowerCase()) throw userError_("Please choose a new password that is different from the old one and from the username.");
+  record.passwordHash = hashPassword_(next);
+  record.updatedAt = new Date().toISOString();
+  updateRecord_(SHEETS.admins, record);
+  deleteRows_(SHEETS.sessions, 1, record.id);   // every other admin session ends
+  const token = "ADM-" + Utilities.getUuid() + Utilities.getUuid().replace(/-/g, "");
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_HOURS * 3600 * 1000).toISOString();
+  appendRecord_(SHEETS.sessions, { token: tokenHash_(token), userId: record.id, expiresAt: expiresAt, createdAt: new Date().toISOString() });
+  return { token: token, expiresAt: expiresAt, admin: safeUser_(record), message: "Password changed." };
+}
+
+function requireAdmin_(data, allowTemporary) {
   const token = clean_(data.token);
-  if (token.indexOf("ADM-") !== 0) throw new Error("Admin access only. Please sign in as an administrator.");
-  const session = readRecords_(SHEETS.sessions).find(function (s) { return s.token === token; });
-  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) throw new Error("Your session has expired. Please sign in again.");
+  if (token.indexOf("ADM-") !== 0) throw userError_("Admin access only. Please sign in as an administrator.");
+  if (!allowTemporary && token.indexOf("ADM-TMP-") === 0) throw userError_("Admin access only. Please choose a new admin password first.");
+  const session = readRecords_(SHEETS.sessions).find(function (s) { return safeEqual_(s.token, tokenHash_(token)); });
+  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) throw userError_("Your session has expired. Please sign in again.");
   const admin = readRecords_(SHEETS.admins).find(function (a) { return a.id === session.userId && a.active; });
-  if (!admin) throw new Error("This admin account no longer exists.");
+  if (!admin) throw userError_("This admin account no longer exists.");
   return safeUser_(admin);
 }
 
@@ -285,7 +395,7 @@ function adminOverview_(admin) {
 
 function userById_(id) {
   const user = readRecords_(SHEETS.users).find(function (u) { return u.id === clean_(id); });
-  if (!user) throw new Error("User not found.");
+  if (!user) throw userError_("User not found.");
   return user;
 }
 
@@ -315,16 +425,16 @@ function adminSendReset_(input, admin) {
 
 function adminDeleteAppointment_(input, admin) {
   const id = clean_(input.id);
-  if (!id) throw new Error("Appointment id is required.");
+  if (!id) throw userError_("Appointment id is required.");
   deleteRows_(SHEETS.appointments, 0, id);
   return { status: "deleted", id: id };
 }
 
 function adminSetAppointmentStatus_(input, admin) {
   const status = clean_(input.status).toLowerCase();
-  if (STATUSES.indexOf(status) === -1) throw new Error("Invalid status.");
+  if (STATUSES.indexOf(status) === -1) throw userError_("Invalid status.");
   const current = readRecords_(SHEETS.appointments).find(function (a) { return a.id === clean_(input.id); });
-  if (!current) throw new Error("Appointment not found.");
+  if (!current) throw userError_("Appointment not found.");
   current.status = status;
   current.updatedAt = new Date().toISOString();
   updateRecord_(SHEETS.appointments, current);
@@ -340,6 +450,7 @@ function listAppointments_(user) {
 function createAppointment_(input, user) {
   const data = normalizeAppointment_(input);
   validateAppointment_(data, true);
+  if (readRecords_(SHEETS.appointments).filter(function (a) { return a.userId === user.id; }).length >= LIMITS.appointmentsPerUser) throw userError_("You have reached the limit of " + LIMITS.appointmentsPerUser + " appointments. Please delete some old ones first.");
   const now = new Date().toISOString();
   const record = Object.assign({ id: makeId_("APT"), userId: user.id, createdAt: now, updatedAt: now, reminderSentAt: reminderStartState_(data) }, data);
   appendRecord_(SHEETS.appointments, record);
@@ -367,24 +478,26 @@ function deleteAppointment_(input, user) {
 }
 
 function ownAppointment_(id, user) {
-  if (!id) throw new Error("Appointment id is required.");
+  if (!id) throw userError_("Appointment id is required.");
   const found = readRecords_(SHEETS.appointments).find(function (a) { return a.id === id; });
-  if (!found || found.userId !== user.id) throw new Error("Appointment not found.");
+  if (!found || found.userId !== user.id) throw userError_("Appointment not found.");
   return found;
 }
 
 function normalizeAppointment_(i) {
   const remind = i.remindBefore === "" || i.remindBefore === undefined || i.remindBefore === null ? 1440 : Number(i.remindBefore);
-  return { title: clean_(i.title), date: clean_(i.date), time: clean_(i.time), timezone: validTimezone_(i.timezone), remindBefore: isNaN(remind) ? 1440 : remind, status: clean_(i.status || "upcoming").toLowerCase(), notes: clean_(i.notes) };
+  return { title: cleanText_(i.title), date: clean_(i.date), time: clean_(i.time), timezone: validTimezone_(i.timezone), remindBefore: isNaN(remind) ? 1440 : remind, status: clean_(i.status || "upcoming").toLowerCase(), notes: cleanText_(i.notes, true) };
 }
 
 function validateAppointment_(d, checkFuture) {
-  if (!d.title) throw new Error("Give your appointment a title.");
-  if (d.title.length > 120) throw new Error("The title is too long (120 characters max).");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) throw new Error("Please pick a valid date.");
-  if (!/^\d{2}:\d{2}$/.test(d.time)) throw new Error("Please pick a valid time.");
-  if (STATUSES.indexOf(d.status) === -1) throw new Error("Invalid status.");
-  if (checkFuture && d.status === "upcoming" && startOf_(d).getTime() < Date.now() - 60000) throw new Error("That time has already passed. Pick a time in the future.");
+  if (!d.title) throw userError_("Give your appointment a title.");
+  if (d.title.length > LIMITS.title) throw userError_("The title is too long (" + LIMITS.title + " characters max).");
+  if (d.notes.length > LIMITS.notes) throw userError_("The notes are too long (" + LIMITS.notes + " characters max).");
+  if ([-1, 0, 15, 60, 180, 1440, 2880].indexOf(d.remindBefore) === -1) throw userError_("Please pick one of the reminder options.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) throw userError_("Please pick a valid date.");
+  if (!/^\d{2}:\d{2}$/.test(d.time)) throw userError_("Please pick a valid time.");
+  if (STATUSES.indexOf(d.status) === -1) throw userError_("Invalid status.");
+  if (checkFuture && d.status === "upcoming" && startOf_(d).getTime() < Date.now() - 60000) throw userError_("That time has already passed. Pick a time in the future.");
 }
 
 /* ───────────── reminder emails ───────────── */
@@ -609,7 +722,7 @@ function sendPreviewEmails() {
 
 function readRecords_(sheetName) {
   const sheet = getDatabase_().getSheetByName(sheetName);
-  if (!sheet) throw new Error("Missing sheet: " + sheetName + ". Run setup() first.");
+  if (!sheet) throw userError_("Missing sheet: " + sheetName + ". Run setup() first.");
   const headers = HEADERS[sheetName];
   if (sheet.getLastRow() < 2) return [];
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues()
@@ -619,8 +732,8 @@ function readRecords_(sheetName) {
 
 function appendRecord_(sheetName, record) {
   const sheet = getDatabase_().getSheetByName(sheetName);
-  if (!sheet) throw new Error("Missing sheet: " + sheetName + ". Run setup() first.");
-  sheet.appendRow(HEADERS[sheetName].map(function (h) { return record[h] === undefined ? "" : record[h]; }));
+  if (!sheet) throw userError_("Missing sheet: " + sheetName + ". Run setup() first.");
+  sheet.appendRow(HEADERS[sheetName].map(function (h) { return record[h] === undefined ? "" : sheetSafe_(record[h]); }));
 }
 
 function updateRecord_(sheetName, record) {
@@ -630,11 +743,11 @@ function updateRecord_(sheetName, record) {
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
     if (String(values[i][idCol]) === String(record.id)) {
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([headers.map(function (h) { return record[h] === undefined ? "" : record[h]; })]);
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([headers.map(function (h) { return record[h] === undefined ? "" : sheetSafe_(record[h]); })]);
       return;
     }
   }
-  throw new Error("Record not found.");
+  throw userError_("Record not found.");
 }
 
 /** Deletes every row whose column `col` equals `value`. */
@@ -662,18 +775,25 @@ function serializeCell_(value, header) {
 
 function getDatabase_() {
   const id = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
-  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) { throw new Error("SPREADSHEET_ID is not valid or this account cannot open the Sheet."); } }
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) { throw userError_("SPREADSHEET_ID is not valid or this account cannot open the Sheet."); } }
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) return active;
-  throw new Error("No Google Sheet connected. Open the script from a Sheet (Extensions > Apps Script) or add a SPREADSHEET_ID script property.");
+  throw userError_("No Google Sheet connected. Open the script from a Sheet (Extensions > Apps Script) or add a SPREADSHEET_ID script property.");
 }
 
 function authorize_(provided) {
   const expected = PropertiesService.getScriptProperties().getProperty("API_KEY") || "";
-  if (expected && expected !== String(provided || "")) throw new Error("Unauthorized request.");
+  if (expected && !safeEqual_(expected, String(provided || ""))) throw userError_("Unauthorized request.");
 }
 
 function makeId_(prefix) { return prefix + "-" + Utilities.getUuid().split("-")[0].toUpperCase(); }
+/** Text typed by a person: no hidden control characters, bounded length. Notes may keep line breaks. */
+function cleanText_(v, keepNewlines) {
+  const text = clean_(v).replace(keepNewlines ? /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g : /[\u0000-\u001F\u007F]/g, keepNewlines ? "" : " ");
+  return text.replace(/[\u202A-\u202E\u2066-\u2069]/g, "");   // text-direction tricks
+}
+/** Google Sheets runs anything that starts with = + - @ as a formula (it could leak or change data), so mark it as plain text. */
+function sheetSafe_(value) { return typeof value === "string" && /^[=+\-@\t\r]/.test(value) ? "'" + value : value; }
 function clean_(v) { return v === undefined || v === null ? "" : String(v).trim(); }
 function esc_(v) { return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function json_(payload) { return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON); }

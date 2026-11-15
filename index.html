@@ -44,6 +44,33 @@
     <meta name="twitter:description" content="Never miss an appointment. Save it once, get an email confirmation now and a reminder just before it starts." />
     <meta name="twitter:image" content="__SITE_URL__/og-image.png" />
     <script>try{var t=localStorage.getItem("qorvena-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";document.documentElement.dataset.theme=t==="dark"?"dark":"light"}catch(e){}</script>
+    <style id="qv-loader-css">
+      .qv-loader{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:max(24px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));background:radial-gradient(circle at 50% 38%,#e3f1ec 0,#f1f6f3 62%);color:#1f2f2c;font-family:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;transition:opacity .45s ease,visibility .45s}
+      [data-theme="dark"] .qv-loader{background:radial-gradient(circle at 50% 38%,#16322c 0,#0e1715 62%);color:#e6f1ed}
+      .qv-loader.qv-overlay{z-index:60;background:rgba(241,246,243,.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:qvFade .25s .15s both}
+      [data-theme="dark"] .qv-loader.qv-overlay{background:rgba(14,23,21,.82)}
+      .qv-loader.qv-hide{opacity:0;visibility:hidden;pointer-events:none}
+      .qv-box{display:grid;justify-items:center;gap:10px;text-align:center}
+      .qv-mark{position:relative;width:clamp(84px,24vw,104px);aspect-ratio:1;display:grid;place-items:center;margin-bottom:6px}
+      .qv-mark svg{width:60%;height:60%;border-radius:22%;box-shadow:0 14px 30px rgba(47,111,99,.35);animation:qvPulse 1.8s ease-in-out infinite}
+      .qv-ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(47,111,99,0) 0,#2f6f63 72%,#f2a65a 100%);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));animation:qvSpin 1.1s linear infinite}
+      [data-theme="dark"] .qv-ring{background:conic-gradient(from 0deg,rgba(92,192,170,0) 0,#5cc0aa 72%,#f2a65a 100%)}
+      .qv-vein{stroke-dasharray:40;animation:qvVein 1.8s ease-in-out infinite}
+      .qv-name{font-size:22px;font-weight:900;letter-spacing:.3px}
+      .qv-text{margin:0;min-height:1.3em;font-size:14px;font-weight:700;color:#6f7f7a}
+      [data-theme="dark"] .qv-text{color:#93aaa2}
+      .qv-dots{display:flex;gap:6px;margin-top:2px}
+      .qv-dots i{width:7px;height:7px;border-radius:50%;background:#2f6f63;animation:qvBounce 1s ease-in-out infinite}
+      [data-theme="dark"] .qv-dots i{background:#5cc0aa}
+      .qv-dots i:nth-child(2){animation-delay:.15s;background:#f2a65a}.qv-dots i:nth-child(3){animation-delay:.3s}
+      @keyframes qvSpin{to{transform:rotate(360deg)}}
+      @keyframes qvPulse{0%,100%{transform:scale(.93)}50%{transform:scale(1)}}
+      @keyframes qvVein{0%{stroke-dashoffset:40}55%,100%{stroke-dashoffset:0}}
+      @keyframes qvBounce{0%,80%,100%{transform:translateY(0);opacity:.55}40%{transform:translateY(-7px);opacity:1}}
+      @keyframes qvFade{from{opacity:0}to{opacity:1}}
+      @media (prefers-reduced-motion:reduce){.qv-ring{animation:qvSpin 3s linear infinite!important}.qv-mark svg,.qv-dots i{animation:none!important}.qv-vein{animation:none!important;stroke-dashoffset:0}}
+    </style>
+    <noscript><style>#boot{display:none!important}</style></noscript>
     <!--SEO_JSON_LD-->
     <title>Qorvena · Appointment Management &amp; Email Reminders</title>
   </head>
@@ -65,6 +92,16 @@
         <p>Please turn on JavaScript to sign in and manage your appointments.</p>
       </main>
     </noscript>
+    <div id="boot" class="qv-loader" role="status" aria-label="Loading Qorvena">
+      <div class="qv-box">
+        <div class="qv-mark"><span class="qv-ring"></span>
+          <svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="qvg-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f6f63"/><stop offset="1" stop-color="#47a592"/></linearGradient></defs><rect width="40" height="40" rx="12" fill="url(#qvg-b)"/><circle cx="19" cy="18" r="9" fill="none" stroke="#fff" stroke-width="3"/><path class="qv-vein" d="M18 20.5c3.2.2 4.6 3 6.6 5s4.4 1 6.4 3.4" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="32.2" cy="29.6" r="2.3" fill="#f2a65a"/></svg></div>
+        <strong class="qv-name">Qorvena</strong>
+        <p class="qv-text">Loading…</p>
+        <div class="qv-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      </div>
+    </div>
+    <script>setTimeout(function(){var b=document.getElementById("boot");if(b){b.classList.add("qv-hide")}},15000)</script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -5,6 +5,7 @@ import About from "./About";
 import Admin from "./Admin";
 import ThemeToggle from "./Theme";
 import ErrorBoundary from "./ErrorBoundary";
+import Loader from "./Loader";
 import { StatTiles, MiniCalendar, QuickBook, ReminderCard, Tips } from "./Dash";
 
 /* ───────── helpers ───────── */
@@ -100,7 +101,7 @@ function Field({ id, label, ...input }) {
 
 function PasswordField({ id, label, value, onChange, autoComplete }) {
   const [show, setShow] = useState(false);
-  return <div className="ff ff-pass"><input id={id} type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder=" " required autoComplete={autoComplete} /><label htmlFor={id}>{label}</label><button type="button" className="show-btn" aria-pressed={show} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div>;
+  return <div className="ff ff-pass"><input id={id} type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder=" " required autoComplete={autoComplete} maxLength={128} /><label htmlFor={id}>{label}</label><button type="button" className="show-btn" aria-pressed={show} aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div>;
 }
 
 /* ───────── sign in / sign up / reset ───────── */
@@ -154,13 +155,14 @@ function AuthScreen({ onAuth, onAbout, onTeam, onAdmin }) {
   const label = mode === "signin" ? "Sign in" : mode === "signup" ? "Create my account" : step === 1 ? "Send me a code" : "Save new password";
 
   return <div className="auth-shell"><div className="blob blob-a" /><div className="blob blob-b" /><div className="auth-theme"><ThemeToggle /></div>
+    {busy && <Loader text={mode === "signin" ? "Signing you in…" : mode === "signup" ? "Creating your account…" : step === 1 ? "Sending your code…" : "Just a moment…"} />}
     <div className="auth-card spot"><Brand />
       {mode !== "recovery" && <div className="tabs" role="tablist"><span className="tab-pill" style={{ transform: `translateX(${mode === "signup" ? 100 : 0}%)` }} /><button type="button" role="tab" aria-selected={mode === "signin"} onClick={() => go("signin")}>Sign in</button><button type="button" role="tab" aria-selected={mode === "signup"} onClick={() => go("signup")}>Create account</button></div>}
       <div className="auth-body" key={mode + step}>
         <h1>{title}</h1><p className="muted">{intro}</p>
         <form onSubmit={submit} className="trail">
-          {mode === "signup" && <TrailRow ok={name.trim().length >= 2}><Field id="f-name" label="Your name" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="name" /></TrailRow>}
-          <TrailRow ok={emailOk}><Field id="f-email" label="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" inputMode="email" /></TrailRow>
+          {mode === "signup" && <TrailRow ok={name.trim().length >= 2}><Field id="f-name" label="Your name" value={name} onChange={(e) => setName(e.target.value)} autoFocus autoComplete="name" maxLength={80} /></TrailRow>}
+          <TrailRow ok={emailOk}><Field id="f-email" label="Email address" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} autoFocus={mode === "signin"} readOnly={mode === "recovery" && step === 2} autoComplete="email" inputMode="email" /></TrailRow>
           {mode === "recovery" && step === 2 && <TrailRow ok={code.length === 6}><Field id="f-code" label="6-digit code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoFocus autoComplete="one-time-code" className="code-input" /></TrailRow>}
           {showPass && <TrailRow ok={passOk}>
             <PasswordField id="f-pass" label={mode === "recovery" ? "New password" : "Password"} value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} />

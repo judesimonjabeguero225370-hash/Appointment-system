@@ -58,3 +58,7 @@ Icons live in `public/` (`favicon.svg`, `favicon.ico`, `favicon-16/32.png`, `app
 ## SEO, answer-engine (AEO) and generative-engine (GEO) setup
 
 Nothing visible on the site changed. Added behind the scenes: a clearer title and description, canonical + language tags, `robots` directives, JSON-LD structured data (WebSite, Organization, WebApplication; `seo/structured-data.js`), a plain-text fallback in `index.html` for crawlers that do not run JavaScript, `public/robots.txt` (search and AI crawlers allowed), `public/sitemap.xml` and `public/llms.txt`. `seo/vite-plugin.js` fills in your real address at build time from `VITE_SITE_URL` (automatic on Vercel). Edit the wording in `llms.txt` and `structured-data.js` if the product changes, since AI engines quote them. After deploying, submit `/sitemap.xml` in Google Search Console and Bing Webmaster Tools.
+
+## Security
+
+Hardened sign-in, sessions, admin first-login password change, API proxy limits and security headers are described in [SECURITY.md](SECURITY.md), including the short list of steps you must do yourself (API key, redeploy).
